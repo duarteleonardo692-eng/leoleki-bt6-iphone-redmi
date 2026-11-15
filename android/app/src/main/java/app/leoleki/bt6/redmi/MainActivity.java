@@ -72,10 +72,10 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 — Redmi v0.5.1 — Diagnostico VPN");
+        title.setText("BT6 — Redmi v0.5.2 — VPN LAB");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "BT6 v0.5.1: coleta diagnostico de rede e VPN isolada. Mantem o Bluetooth com iPhone v0.4; internet de outros apps ainda nao ativada.");
+        addText(content, "BT6 v0.5.2: corrige permissoes de socket e leitura TUN. Conecta ao iPhone v0.4. Ainda nao encaminha internet para outros apps.");
         statusView = addText(content, "Status: pronto para procurar iPhone v0.4");
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.4", this::ensurePermissionsAndScan);
@@ -179,7 +179,9 @@ public class MainActivity extends Activity {
     private void showVpnLabStatus() {
         status(VpnProbeService.diagnostic + " | VPN ativa: " + VpnProbeService.active
                 + " | Leitor: " + VpnProbeService.readerState
-                + " | Leituras TUN: " + VpnProbeService.rawTunReads.get()
+                + " | Leituras TUN com dados: " + VpnProbeService.rawTunReads.get()
+                + " | Leituras vazias: " + VpnProbeService.emptyTunReads.get()
+                + " | IPv6: " + VpnProbeService.ipv6Frames.get()
                 + " | IPv4: " + VpnProbeService.capturedPackets.get()
                 + " | TCP: " + VpnProbeService.capturedTcpPackets.get()
                 + " | UDP: " + VpnProbeService.capturedUdpPackets.get()
@@ -221,12 +223,20 @@ public class MainActivity extends Activity {
         }
     }
 
+    private void checkInternetSocketPermission() {
+        boolean allowed = checkSelfPermission(Manifest.permission.INTERNET)
+                == PackageManager.PERMISSION_GRANTED;
+        status("Permissao INTERNET (abrir sockets): " + (allowed ? "OK" : "AUSENTE") +
+                ". Isso nao significa que o Android tenha acesso a rede externa.");
+    }
+
     private void generateLabPacket() {
         if (!VpnProbeService.active) {
             status("Ative a VPN LAB explicitamente antes deste teste.");
             return;
         }
         diagnoseAndroidNetwork();
+        checkInternetSocketPermission();
         status("Teste TCP e UDP para IP reservado 198.18.0.1. " +
                 "Sem servidor de destino: nao espere uma resposta de internet.");
         new Thread(() -> {

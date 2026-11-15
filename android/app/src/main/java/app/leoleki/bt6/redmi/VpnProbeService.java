@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * BT6 v0.5.1 VPN LAB — diagnostico de rotas e leitura TUN. This service captures ONLY the BT6 app's packets bound
+ * BT6 v0.5.2 VPN LAB — diagnostico de rotas e leitura TUN. This service captures ONLY the BT6 app's packets bound
  * for the RFC 2544 benchmarking range 198.18.0.0/15.
  *
  * No packet is forwarded to the iPhone. This is NOT a working Internet VPN.
@@ -31,6 +31,8 @@ public final class VpnProbeService extends VpnService {
 
     public static final AtomicInteger capturedPackets = new AtomicInteger();
     public static final AtomicInteger rawTunReads = new AtomicInteger();
+    public static final AtomicInteger emptyTunReads = new AtomicInteger();
+    public static final AtomicInteger ipv6Frames = new AtomicInteger();
     public static final AtomicInteger malformedFrames = new AtomicInteger();
     public static volatile boolean captureReaderStarted = false;
     public static volatile String readerState = "Leitor TUN nao iniciado";
@@ -66,7 +68,7 @@ public final class VpnProbeService extends VpnService {
             // de benchmark. Outros apps, inclusive WhatsApp/Chrome,
             // NAO sao redirecionados.
             Builder builder = new Builder()
-                .setSession("BT6 LAB v0.5 — somente teste")
+                .setSession("BT6 LAB v0.5.2 — somente teste")
                 .setMtu(1500)
                 .addAddress("10.77.0.2", 32)
                 .addRoute("198.18.0.0", 15)
@@ -86,6 +88,8 @@ public final class VpnProbeService extends VpnService {
                 startForeground(NOTIFICATION_ID, notification);
             }
             rawTunReads.set(0);
+            emptyTunReads.set(0);
+            ipv6Frames.set(0);
             malformedFrames.set(0);
             captureReaderStarted = false;
             readerState = "Leitor TUN iniciando";
@@ -138,8 +142,27 @@ public final class VpnProbeService extends VpnService {
             while (running) {
                 int n = input.read(buffer);
                 if (n < 0) break;
+                if (n == 0) {
+                    // A read without bytes is NOT a network packet.
+                    // Some TUN implementations can return zero repeatedly;
+                    // throttling avoids unbounded CPU use and fake error counts.
+                    emptyTunReads.incrementAndGet();
+                    readerState = "Leitor TUN sem dados; aguardando";
+                    try {
+                        Thread.sleep(75);
+                    } catch (InterruptedException interrupted) {
+                        Thread.currentThread().interrupt();
+                        break;
+                    }
+                    continue;
+                }
                 rawTunReads.incrementAndGet();
-                if (n < 20 || (buffer[0] >> 4 & 0x0f) != 4) {
+                int version = (buffer[0] >> 4) & 0x0f;
+                if (version == 6) {
+                    ipv6Frames.incrementAndGet();
+                    continue;
+                }
+                if (version != 4 || n < 20) {
                     malformedFrames.incrementAndGet();
                     continue;
                 }
@@ -150,6 +173,7 @@ public final class VpnProbeService extends VpnService {
                 }
                 int proto = buffer[9] & 0xff;
                 capturedPackets.incrementAndGet();
+                readerState = "Pacotes IPv4 validos recebidos";
                 if (proto == 6) capturedTcpPackets.incrementAndGet();
                 else if (proto == 17) capturedUdpPackets.incrementAndGet();
                 // Packet data discarded immediately. No PII, URL or payload logs.
