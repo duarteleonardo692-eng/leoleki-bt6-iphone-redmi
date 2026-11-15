@@ -28,7 +28,8 @@ jobs:
           unzip -nq "$ZIP" 'ios/*'
           test -f project.yml
           test -f ios/Sources/BT6iPhoneApp.swift
-          grep -q "BT6 v0.6" ios/Sources/BT6PeripheralBridge.swift
+          grep -q 'runUdpLabProbe' ios/Sources/BT6PeripheralBridge.swift
+          grep -q 'AD08C143-7581-4612-9D63-20D9540C4A31' ios/Sources/BT6PeripheralBridge.swift
           echo "Fontes iOS v0.6 presentes"
 
       - name: Mostrar versao do Xcode
