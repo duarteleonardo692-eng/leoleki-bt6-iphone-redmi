@@ -8,7 +8,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"/>
-    <application android:label="BT6 Redmi v0.5" android:allowBackup="false"
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <application android:label="BT6 Redmi v0.5.1" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name="app.leoleki.bt6.redmi.MainActivity" android:exported="true">
             <intent-filter>
