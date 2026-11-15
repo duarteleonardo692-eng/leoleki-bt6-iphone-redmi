@@ -6,7 +6,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Ponte Bluetooth BT6 v0.8.1") {
+                Section("Ponte Bluetooth BT6 v0.8.2") {
                     Text("iPhone XR → Redmi Note 11 sem PC durante a comunicacao")
                         .font(.subheadline)
                     LabeledContent("Bluetooth", value: bridge.bluetoothStatus)
@@ -28,7 +28,7 @@ struct ContentView: View {
                         .font(.footnote)
                 }
             }
-            .navigationTitle("BT6 iPhone v0.8.1")
+            .navigationTitle("BT6 iPhone v0.8.2")
         }
     }
 }

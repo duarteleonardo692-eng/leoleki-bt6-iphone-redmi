@@ -5,7 +5,7 @@ import Combine
 
 /// BT6 v0.4: retransmissao TCP de diagnostico e texto HTTPS via pacotes BLE.
 final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManagerDelegate {
-    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A41")
+    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A81")
     static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A42")
     static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A43")
     static let psmUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A44")

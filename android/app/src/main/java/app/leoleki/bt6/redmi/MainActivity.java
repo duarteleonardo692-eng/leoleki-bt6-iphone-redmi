@@ -49,7 +49,7 @@ import java.util.UUID;
 
 public class MainActivity extends Activity {
     // UUIDs exclusivos da v0.3: evita acoplamento acidental com o iPhone v0.2.
-    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A41");
+    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A81");
     private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A42");
     private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A43");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB");
@@ -72,6 +72,7 @@ public class MainActivity extends Activity {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic requestChar, responseChar;
     private boolean scanning, notificationReady, writeActive;
+    private boolean setupActive;
     private long requestStartMs = 0L;
 
     @Override public void onCreate(Bundle state) {
@@ -83,7 +84,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8 — Internet do iPhone");
+        title.setText("BT6 v0.8.3 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -414,6 +415,7 @@ public class MainActivity extends Activity {
 
     @SuppressLint("MissingPermission")
     private void startScan() {
+        if (setupActive) { status("Aguarde a busca/conexao atual terminar."); return; }
         BluetoothManager btManager = (BluetoothManager) getSystemService(BLUETOOTH_SERVICE);
         BluetoothAdapter adapter = btManager == null ? null : btManager.getAdapter();
         if (adapter == null || !adapter.isEnabled()) {
@@ -440,12 +442,14 @@ public class MainActivity extends Activity {
         List<ScanFilter> filters = Arrays.asList(filter);
         ScanSettings settings = new ScanSettings.Builder()
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
+        setupActive = true;
         scanning = true;
         scanner.startScan(filters, settings, callback);
         status("Buscando iPhone BT6 v0.8. Mantenha o app v0.8 aberto no iPhone.");
         handler.postDelayed(() -> {
             if (scanning) {
                 stopScan();
+                setupActive = false;
                 status("Busca expirou. Deixe o BT6 v0.8 visivel no iPhone e tente novamente.");
             }
         }, 25000);
@@ -468,6 +472,7 @@ public class MainActivity extends Activity {
 
         @Override public void onScanFailed(int errorCode) {
             scanning = false;
+            setupActive = false;
             status("Erro BLE ao buscar: " + errorCode);
         }
     };
@@ -479,7 +484,10 @@ public class MainActivity extends Activity {
 
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
         @Override public void onConnectionStateChange(BluetoothGatt connection, int code, int newState) {
+            if (connection != gatt) return;
             if (code != BluetoothGatt.GATT_SUCCESS) {
+                setupActive = false;
+                internetPsm = 0;
                 notificationReady = false;
                 synchronized (txQueue) {
                     txQueue.clear();
@@ -492,18 +500,23 @@ public class MainActivity extends Activity {
                 status("Bluetooth conectado. Buscando servicos...");
                 discover(connection);
             } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                setupActive = false;
+                internetPsm = 0;
                 notificationReady = false;
                 status("iPhone desconectado");
             }
         }
 
         @Override public void onServicesDiscovered(BluetoothGatt connection, int code) {
+            if (connection != gatt) return;
             if (code != BluetoothGatt.GATT_SUCCESS) {
+                setupActive = false;
                 status("Erro ao ler servicos: " + code);
                 return;
             }
             BluetoothGattService service = connection.getService(SERVICE);
             if (service == null) {
+                setupActive = false;
                 status("Servico BT6 v0.4 nao encontrado");
                 return;
             }
@@ -511,6 +524,7 @@ public class MainActivity extends Activity {
             requestChar = service.getCharacteristic(REQUEST);
             responseChar = service.getCharacteristic(RESPONSE);
             if (requestChar == null || responseChar == null) {
+                setupActive = false;
                 status("Caracteristicas BLE ausentes");
                 return;
             }
@@ -518,22 +532,26 @@ public class MainActivity extends Activity {
         }
 
         @Override public void onDescriptorWrite(BluetoothGatt connection, BluetoothGattDescriptor descriptor, int code) {
+            if (connection != gatt) return;
             if (CCCD.equals(descriptor.getUuid()) && code == BluetoothGatt.GATT_SUCCESS) {
+                setupActive = false;
                 notificationReady = true;
                 status("Conectado ao iPhone v0.8. Pronto para transferir.");
                 readInternetEndpoint(connection);
             } else {
+                setupActive = false;
                 status("Falha nas notificacoes BLE: " + code);
             }
         }
 
         @Override public void onCharacteristicRead(BluetoothGatt c, BluetoothGattCharacteristic ch, int result) {
-            readPsm(ch, ch.getValue(), result);
+            if (c == gatt) readPsm(ch, ch.getValue(), result);
         }
         @Override public void onCharacteristicRead(BluetoothGatt c, BluetoothGattCharacteristic ch, byte[] value, int result) {
-            readPsm(ch, value, result);
+            if (c == gatt) readPsm(ch, value, result);
         }
         @Override public void onCharacteristicWrite(BluetoothGatt connection, BluetoothGattCharacteristic characteristic, int code) {
+            if (connection != gatt) return;
             synchronized (txQueue) {
                 if (!writeActive) return;
                 if (code != BluetoothGatt.GATT_SUCCESS) {
@@ -548,10 +566,12 @@ public class MainActivity extends Activity {
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt connection, BluetoothGattCharacteristic ch) {
+            if (connection != gatt) return;
             parseNotification(ch.getValue());
         }
 
         @Override public void onCharacteristicChanged(BluetoothGatt connection, BluetoothGattCharacteristic ch, byte[] value) {
+            if (connection != gatt) return;
             parseNotification(value);
         }
     };
