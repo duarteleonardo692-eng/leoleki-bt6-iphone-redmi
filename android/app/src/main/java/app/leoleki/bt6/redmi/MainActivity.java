@@ -3,6 +3,9 @@ package app.leoleki.bt6.redmi;
 import android.Manifest;
 import android.annotation.SuppressLint;
 import android.app.Activity;
+import android.app.AlertDialog;
+import android.content.Intent;
+import android.net.VpnService;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -44,6 +47,7 @@ public class MainActivity extends Activity {
     private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A23");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB");
     private static final int REQ_BT_PERMISSIONS = 901;
+    private static final int REQ_VPN_LAB = 902;
     private static final int MAX_BODY_BYTES = 8192;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ByteArrayOutputStream responseBuffer = new ByteArrayOutputStream();
@@ -65,10 +69,10 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 — Redmi v0.3");
+        title.setText("BT6 — Redmi v0.5 VPN LAB");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "Internet de texto pelo Bluetooth, sem Wi-Fi no Redmi. iPhone precisa do BT6 v0.4 e de internet.");
+        addText(content, "BT6 v0.5: conecta ao iPhone BT6 v0.4. Internet real nos outros apps ainda NAO habilitada.");
         statusView = addText(content, "Status: pronto para procurar iPhone v0.4");
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.4", this::ensurePermissionsAndScan);
@@ -92,6 +96,12 @@ public class MainActivity extends Activity {
                 sendUrl("https://www.iana.org/domains/reserved"));
         addText(content, "Nesta etapa, por segurança, apenas example.com, pt.wikipedia.org e www.iana.org. Ainda não fornece internet a Chrome/WhatsApp.");
 
+        addText(content, "6. VPN LAB (opcional e isolada): apenas este aplicativo e somente IPs 198.18.0.0/15. Nao encaminha pacotes para o iPhone.");
+        addText(content, "ATENCAO: ativar uma VPN de teste pode interromper outra VPN existente no aparelho. Ela nao libera internet ao Chrome ou WhatsApp.");
+        addButton(content, "Iniciar VPN LAB (somente teste)", this::confirmAndPrepareVpnLab);
+        addButton(content, "Gerar pacote TCP de teste (nao tera resposta)", this::generateLabPacket);
+        addButton(content, "Verificar pacotes VPN LAB", this::showVpnLabStatus);
+        addButton(content, "DESLIGAR VPN LAB", this::stopVpnLab);
         pageView = addText(content, "O texto da página aparecerá aqui após a transferência.");
         pageView.setTextSize(16f);
         logView = addText(content, "Registro de testes:\n");
@@ -119,6 +129,81 @@ public class MainActivity extends Activity {
             statusView.setText("Status: " + text);
             logView.append(text + "\n");
         });
+    }
+
+    private void confirmAndPrepareVpnLab() {
+        new AlertDialog.Builder(this)
+            .setTitle("VPN LAB: autorizacao opcional")
+            .setMessage("SOMENTE o BT6 e os IPs de teste 198.18.0.0/15 serao capturados. " +
+                "Outros aplicativos nao serao redirecionados. Essa VPN de laboratorio nao " +
+                "transmite internet; ela pode substituir outra VPN em uso. Deseja continuar?")
+            .setNegativeButton("Cancelar", null)
+            .setPositiveButton("Autorizar teste", (dialog, which) -> {
+                try {
+                    Intent permission = VpnService.prepare(this);
+                    if (permission != null) {
+                        startActivityForResult(permission, REQ_VPN_LAB);
+                    } else {
+                        startVpnLab();
+                    }
+                } catch (Exception e) {
+                    status("Falha ao solicitar VPN: " + e.getMessage());
+                }
+            }).show();
+    }
+
+    @Override protected void onActivityResult(int requestCode, int resultCode, Intent data) {
+        super.onActivityResult(requestCode, resultCode, data);
+        if (requestCode == REQ_VPN_LAB) {
+            if (resultCode == RESULT_OK) startVpnLab();
+            else status("VPN LAB cancelada. Nada foi ativado.");
+        }
+    }
+
+    private void startVpnLab() {
+        Intent intent = new Intent(this, VpnProbeService.class)
+                .setAction(VpnProbeService.ACTION_START);
+        try {
+            if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent);
+            else startService(intent);
+            status("Solicitado inicio de VPN LAB. Toque em Verificar pacotes para ver o estado.");
+        } catch (Exception e) {
+            status("Nao foi possivel iniciar VPN LAB: " + e.getMessage());
+        }
+    }
+
+    private void showVpnLabStatus() {
+        status(VpnProbeService.diagnostic + " | IPv4: " +
+                VpnProbeService.capturedPackets.get() + " | TCP: " +
+                VpnProbeService.capturedTcpPackets.get() + " | UDP: " +
+                VpnProbeService.capturedUdpPackets.get());
+    }
+
+    private void generateLabPacket() {
+        if (!VpnProbeService.active) {
+            status("Ative a VPN LAB explicitamente antes deste teste.");
+            return;
+        }
+        status("Tentando enviar pacote TCP para 198.18.0.1:80 (nao havera resposta)");
+        new Thread(() -> {
+            try (java.net.Socket socket = new java.net.Socket()) {
+                socket.connect(new java.net.InetSocketAddress(VpnProbeService.DESTINATION, 80), 1200);
+            } catch (Exception ignored) {
+                // Destino de diagnostico sem servidor: timeout e esperado.
+            }
+            runOnUiThread(this::showVpnLabStatus);
+        }, "BT6-LAB-GENERATOR").start();
+    }
+
+    private void stopVpnLab() {
+        Intent stop = new Intent(this, VpnProbeService.class)
+                .setAction(VpnProbeService.ACTION_STOP);
+        try {
+            startService(stop);
+            status("Comando DESLIGAR VPN LAB enviado.");
+        } catch (Exception e) {
+            status("Nao foi possivel parar VPN LAB: " + e.getMessage());
+        }
     }
 
     private boolean hasPermissions() {
