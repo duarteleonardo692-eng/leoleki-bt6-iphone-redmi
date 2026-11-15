@@ -39,9 +39,9 @@ import java.util.UUID;
 
 public class MainActivity extends Activity {
     // UUIDs exclusivos da v0.3: evita acoplamento acidental com o iPhone v0.2.
-    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A11");
-    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A12");
-    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A13");
+    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A21");
+    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A22");
+    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A23");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB");
     private static final int REQ_BT_PERMISSIONS = 901;
     private static final int MAX_BODY_BYTES = 8192;
@@ -54,6 +54,7 @@ public class MainActivity extends Activity {
     private BluetoothGatt gatt;
     private BluetoothGattCharacteristic requestChar, responseChar;
     private boolean scanning, notificationReady, writeActive;
+    private long requestStartMs = 0L;
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
@@ -67,14 +68,18 @@ public class MainActivity extends Activity {
         title.setText("BT6 — Redmi v0.3");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "Internet de texto pelo Bluetooth, sem Wi-Fi no Redmi. iPhone precisa do BT6 v0.3 e de internet.");
-        statusView = addText(content, "Status: pronto para procurar iPhone");
+        addText(content, "Internet de texto pelo Bluetooth, sem Wi-Fi no Redmi. iPhone precisa do BT6 v0.4 e de internet.");
+        statusView = addText(content, "Status: pronto para procurar iPhone v0.4");
         statusView.setTextSize(18f);
-        addButton(content, "1. Buscar iPhone BT6 v0.3", this::ensurePermissionsAndScan);
+        addButton(content, "1. Buscar iPhone BT6 v0.4", this::ensurePermissionsAndScan);
         addButton(content, "2. Testar Bluetooth (PING)", () -> sendCommand((byte)0x50));
         addButton(content, "3. Testar internet (HTTP 200)", () -> sendCommand((byte)0x47));
+        addButton(content, "4. Testar transporte TCP real (example.com:80)", () -> sendCommand((byte)0x54));
+        addText(content, "Este teste pede que o iPhone abra uma conexao TCP nativa, " +
+                "receba os bytes da resposta HTTP e os devolva por BLE com checksum. " +
+                "Nao e a internet geral do Android; a porta 80 so e usada com dados publicos de teste.");
 
-        addText(content, "4. Ler conteúdo real via Bluetooth:");
+        addText(content, "5. Ler conteúdo real via Bluetooth:");
         urlInput = new EditText(this);
         urlInput.setSingleLine(true);
         urlInput.setText("https://example.com/");
@@ -174,11 +179,11 @@ public class MainActivity extends Activity {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         scanning = true;
         scanner.startScan(filters, settings, callback);
-        status("Buscando iPhone BT6 v0.3. Mantenha o app v0.3 aberto no iPhone.");
+        status("Buscando iPhone BT6 v0.4. Mantenha o app v0.3 aberto no iPhone.");
         handler.postDelayed(() -> {
             if (scanning) {
                 stopScan();
-                status("Busca expirou. Deixe o BT6 v0.3 visivel no iPhone e tente novamente.");
+                status("Busca expirou. Deixe o BT6 v0.4 visivel no iPhone e tente novamente.");
             }
         }, 25000);
     }
@@ -194,7 +199,7 @@ public class MainActivity extends Activity {
             if (!scanning || result.getDevice() == null) return;
             BluetoothDevice device = result.getDevice();
             stopScan();
-            status("iPhone BT6 v0.3 encontrado. Conectando...");
+            status("iPhone BT6 v0.4 encontrado. Conectando...");
             connect(device);
         }
 
@@ -236,7 +241,7 @@ public class MainActivity extends Activity {
             }
             BluetoothGattService service = connection.getService(SERVICE);
             if (service == null) {
-                status("Servico BT6 v0.3 nao encontrado");
+                status("Servico BT6 v0.4 nao encontrado");
                 return;
             }
             requestChar = service.getCharacteristic(REQUEST);
@@ -251,7 +256,7 @@ public class MainActivity extends Activity {
         @Override public void onDescriptorWrite(BluetoothGatt connection, BluetoothGattDescriptor descriptor, int code) {
             if (CCCD.equals(descriptor.getUuid()) && code == BluetoothGatt.GATT_SUCCESS) {
                 notificationReady = true;
-                status("Conectado ao iPhone v0.3. Pronto para transferir.");
+                status("Conectado ao iPhone v0.4. Pronto para transferir.");
             } else {
                 status("Falha nas notificacoes BLE: " + code);
             }
@@ -308,9 +313,10 @@ public class MainActivity extends Activity {
     private void sendCommand(byte command) {
         synchronized (txQueue) {
             if (!isReady() || writeActive) {
-                status("Conecte o BT6 v0.3 ou aguarde a transferencia atual");
+                status("Conecte o BT6 v0.4 ou aguarde a transferencia atual");
                 return;
             }
+            requestStartMs = android.os.SystemClock.elapsedRealtime();
             txQueue.addLast(new byte[]{command});
             writeActive = true;
             sendNextFrameLocked();
@@ -336,9 +342,10 @@ public class MainActivity extends Activity {
             }
             synchronized (txQueue) {
                 if (!isReady() || writeActive) {
-                    status("Conecte o BT6 v0.3 ou aguarde a transferencia atual");
+                    status("Conecte o BT6 v0.4 ou aguarde a transferencia atual");
                     return;
                 }
+                requestStartMs = android.os.SystemClock.elapsedRealtime();
                 txQueue.addLast(new byte[]{0x55}); // U = inicio
                 for (int i = 0; i < bytes.length; i += 17) {
                     int end = Math.min(bytes.length, i + 17);
@@ -427,7 +434,10 @@ public class MainActivity extends Activity {
             } else {
                 String text = new String(data, StandardCharsets.UTF_8);
                 runOnUiThread(() -> pageView.setText(text));
-                status("Recebidos " + data.length + " bytes reais; integridade OK");
+                long elapsed = requestStartMs > 0L
+                        ? android.os.SystemClock.elapsedRealtime() - requestStartMs : 0L;
+                status("Recebidos " + data.length + " bytes reais; integridade OK"
+                        + (elapsed > 0 ? "; " + elapsed + " ms" : ""));
             }
             responseBuffer.reset();
         }
