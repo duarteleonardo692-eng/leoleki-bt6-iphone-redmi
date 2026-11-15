@@ -8,7 +8,7 @@ permissions:
 
 jobs:
   build-android:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 25
     steps:
       - name: Baixar repositorio
@@ -31,14 +31,24 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Preparar SDK Android
-        uses: android-actions/setup-android@v3
-
-      - name: Instalar Android SDK 35
+      - name: Preparar Android SDK sem pacote obsoleto
         shell: bash
         run: |
-          yes | sdkmanager --licenses >/dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          echo "ANDROID_HOME=${ANDROID_HOME:-}"
+          test -d "${ANDROID_HOME:-/not-installed}" || { echo "Android SDK nao encontrado no runner"; exit 1; }
+          if command -v sdkmanager >/dev/null 2>&1; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          elif test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"; then
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          else
+            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
+          fi
+          test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || { echo "sdkmanager nao encontrado"; exit 1; }
+          echo "sdkmanager: $SDKMANAGER"
+          "$SDKMANAGER" --version
+          yes | "$SDKMANAGER" --licenses >/dev/null || true
+          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
 
       - name: Disponibilizar Gradle 8.9
         uses: gradle/actions/setup-gradle@v4
