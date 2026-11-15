@@ -145,7 +145,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                             self.phase = 3
                             self.enqueue(Data([5,0,0,1,0,0,0,0,0,0]))
                             self.process(); self.readInput(); self.receiveTCP()
-                        case .failed:
+                        case .waiting, .failed:
                             if self.phase == 3 { self.close() } else { self.reject(4) }
                         default: break
                         }
@@ -202,7 +202,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                 guard let self = self, let c = c, !self.closed else { return }
                 switch state {
                 case .ready: self.receiveUDP(c, target)
-                case .failed: self.udpConnections.removeValue(forKey: key); c.cancel()
+                case .waiting, .failed: self.udpConnections.removeValue(forKey: key); c.cancel()
                 default: break
                 }
             }
@@ -210,7 +210,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         }
         // Only one datagram queued to Network at a time; L2CAP credits provide flow control.
         sending = true
-        c.send(content: payload, completion: .contentProcessed { [weak self] error in
+        c.send(content: payload, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { [weak self] error in
             guard let self = self, !self.closed else { return }
             self.sending = false
             if error != nil { self.close(); return }

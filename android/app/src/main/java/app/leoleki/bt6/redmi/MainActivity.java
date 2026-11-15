@@ -83,10 +83,10 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 Redmi v0.8 — Navegar por Bluetooth");
+        title.setText("BT6 v0.8 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "BT6 v0.8: abra paginas HTTPS dentro deste app usando a internet do iPhone via Bluetooth. A opcao de internet completa usa a VPN L2CAP abaixo; o navegador leve continua disponivel.");
+        addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
         statusView = addText(content, "Status: pronto para procurar iPhone v0.8");
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.8", this::ensurePermissionsAndScan);
@@ -94,16 +94,22 @@ public class MainActivity extends Activity {
         addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
         addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.status));
         addButton(content, "DESLIGAR INTERNET", () -> startService(new Intent(this, InternetService.class).setAction(InternetService.STOP)));
-        addButton(content, "2. Testar Bluetooth (PING)", () -> sendCommand((byte)0x50));
+        LinearLayout diagnostics = new LinearLayout(this);
+        diagnostics.setOrientation(LinearLayout.VERTICAL);
+        diagnostics.setVisibility(android.view.View.GONE);
+        addButton(content, "Mostrar / ocultar testes avancados", () -> diagnostics.setVisibility(
+            diagnostics.getVisibility() == android.view.View.VISIBLE ? android.view.View.GONE : android.view.View.VISIBLE));
+        content.addView(diagnostics);
+        addButton(diagnostics, "2. Testar Bluetooth (PING)", () -> sendCommand((byte)0x50));
 
-        addText(content, "NAVEGADOR BT6 — sites HTTPS leves:");
+        addText(diagnostics, "NAVEGADOR BT6 — sites HTTPS leves:");
         browserInput = new EditText(this);
         browserInput.setSingleLine(true);
         browserInput.setText(browserCurrentURL);
         browserInput.setTextSize(15f);
-        content.addView(browserInput);
-        addButton(content, "ABRIR SITE PELO BLUETOOTH", () -> requestBrowserPage(browserInput.getText().toString()));
-        browserStatus = addText(content, "Navegador: conecte o iPhone v0.8 e abra um site HTTPS.");
+        diagnostics.addView(browserInput);
+        addButton(diagnostics, "ABRIR SITE PELO BLUETOOTH", () -> requestBrowserPage(browserInput.getText().toString()));
+        browserStatus = addText(diagnostics, "Navegador: conecte o iPhone v0.8 e abra um site HTTPS.");
         browserView = new WebView(this);
         browserView.getSettings().setJavaScriptEnabled(false);
         browserView.getSettings().setDomStorageEnabled(false);
@@ -123,42 +129,42 @@ public class MainActivity extends Activity {
             }
         });
         int browserHeight = Math.round(360 * getResources().getDisplayMetrics().density);
-        content.addView(browserView, new LinearLayout.LayoutParams(
+        diagnostics.addView(browserView, new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, browserHeight));
         browserView.loadDataWithBaseURL("https://example.com/",
                 "<h3>BT6 v0.8</h3><p>Os links dos sites serao abertos pelo iPhone.</p>",
                 "text/html", "UTF-8", null);
-        addText(content, "Sem videos, downloads, formularios ou logins nesta versao. Nao digite senhas ou dados pessoais; e um navegador experimental.");
+        addText(diagnostics, "Este navegador leve e limitado a texto e links. Nao digite senhas ou dados pessoais; e um navegador experimental.");
 
-        addButton(content, "3. Testar internet (HTTP 200)", () -> sendCommand((byte)0x47));
-        addButton(content, "4. Testar transporte TCP real (example.com:80)", () -> sendCommand((byte)0x54));
-        addText(content, "Este teste pede que o iPhone abra uma conexao TCP nativa, " +
+        addButton(diagnostics, "3. Testar internet (HTTP 200)", () -> sendCommand((byte)0x47));
+        addButton(diagnostics, "4. Testar transporte TCP real (example.com:80)", () -> sendCommand((byte)0x54));
+        addText(diagnostics, "Este teste pede que o iPhone abra uma conexao TCP nativa, " +
                 "receba os bytes da resposta HTTP e os devolva por BLE com checksum. " +
                 "Nao e a internet geral do Android; a porta 80 so e usada com dados publicos de teste.");
 
-        addText(content, "5. Ler conteúdo real via Bluetooth:");
+        addText(diagnostics, "5. Ler conteúdo real via Bluetooth:");
         urlInput = new EditText(this);
         urlInput.setSingleLine(true);
         urlInput.setText("https://example.com/");
         urlInput.setTextSize(14f);
-        content.addView(urlInput);
-        addButton(content, "Ler endereço HTTPS", () -> sendUrl(urlInput.getText().toString()));
-        addButton(content, "Exemplo: Wikipedia Bluetooth", () ->
+        diagnostics.addView(urlInput);
+        addButton(diagnostics, "Ler endereço HTTPS", () -> sendUrl(urlInput.getText().toString()));
+        addButton(diagnostics, "Exemplo: Wikipedia Bluetooth", () ->
                 sendUrl("https://pt.wikipedia.org/wiki/Bluetooth"));
-        addButton(content, "Exemplo: IANA", () ->
+        addButton(diagnostics, "Exemplo: IANA", () ->
                 sendUrl("https://www.iana.org/domains/reserved"));
-        addText(content, "Nesta etapa, por segurança, apenas example.com, pt.wikipedia.org e www.iana.org. Ainda não fornece internet a Chrome/WhatsApp.");
+        addText(diagnostics, "Nesta etapa, por segurança, apenas example.com, pt.wikipedia.org e www.iana.org. Essa restricao e apenas do leitor de diagnostico.");
 
-        addText(content, "6. VPN LAB (opcional e isolada): apenas este aplicativo e somente IPs 198.18.0.0/15. Nao encaminha pacotes para o iPhone.");
-        addText(content, "ATENCAO: ativar uma VPN de teste pode interromper outra VPN existente no aparelho. Ela nao libera internet ao Chrome ou WhatsApp.");
-        addButton(content, "Iniciar VPN LAB (somente teste)", this::confirmAndPrepareVpnLab);
-        addButton(content, "Testar TCP + UDP e verificar captura", this::generateLabPacket);
-        addButton(content, "TESTAR UDP DE IDA E VOLTA VIA IPHONE", this::testUdpRoundTrip);
-        addText(content, "Novo teste: envia UDP pelo TUN Android, usa o iPhone para confirmar HTTPS e devolve uma resposta UDP ao proprio BT6. Apenas diagnostico.");
-        addButton(content, "Diagnosticar rede Android", this::diagnoseAndroidNetwork);
-        addButton(content, "Verificar pacotes VPN LAB", this::showVpnLabStatus);
-        addButton(content, "DESLIGAR VPN LAB", this::stopVpnLab);
-        pageView = addText(content, "O texto da página aparecerá aqui após a transferência.");
+        addText(diagnostics, "6. VPN LAB (opcional e isolada): apenas este aplicativo e somente IPs 198.18.0.0/15. Nao encaminha pacotes para o iPhone.");
+        addText(diagnostics, "ATENCAO: ativar uma VPN de teste pode interromper outra VPN existente no aparelho. Ela nao libera internet ao Chrome ou WhatsApp.");
+        addButton(diagnostics, "Iniciar VPN LAB (somente teste)", this::confirmAndPrepareVpnLab);
+        addButton(diagnostics, "Testar TCP + UDP e verificar captura", this::generateLabPacket);
+        addButton(diagnostics, "TESTAR UDP DE IDA E VOLTA VIA IPHONE", this::testUdpRoundTrip);
+        addText(diagnostics, "Novo teste: envia UDP pelo TUN Android, usa o iPhone para confirmar HTTPS e devolve uma resposta UDP ao proprio BT6. Apenas diagnostico.");
+        addButton(diagnostics, "Diagnosticar rede Android", this::diagnoseAndroidNetwork);
+        addButton(diagnostics, "Verificar pacotes VPN LAB", this::showVpnLabStatus);
+        addButton(diagnostics, "DESLIGAR VPN LAB", this::stopVpnLab);
+        pageView = addText(diagnostics, "O texto da página aparecerá aqui após a transferência.");
         pageView.setTextSize(16f);
         logView = addText(content, "Registro de testes:\n");
         logView.setTextSize(13f);
@@ -187,7 +193,10 @@ public class MainActivity extends Activity {
     private void status(String text) {
         runOnUiThread(() -> {
             statusView.setText("Status: " + text);
-            logView.append(text + "\n");
+            if (logView != null) {
+                if (logView.length() > 12000) logView.setText("Registro recente:\n");
+                logView.append(text + "\n");
+            }
         });
     }
 
@@ -433,11 +442,11 @@ public class MainActivity extends Activity {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         scanning = true;
         scanner.startScan(filters, settings, callback);
-        status("Buscando iPhone BT6 v0.8. Mantenha o app v0.3 aberto no iPhone.");
+        status("Buscando iPhone BT6 v0.8. Mantenha o app v0.8 aberto no iPhone.");
         handler.postDelayed(() -> {
             if (scanning) {
                 stopScan();
-                status("Busca expirou. Deixe o BT6 v0.4 visivel no iPhone e tente novamente.");
+                status("Busca expirou. Deixe o BT6 v0.8 visivel no iPhone e tente novamente.");
             }
         }, 25000);
     }
