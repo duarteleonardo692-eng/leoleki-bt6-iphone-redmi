@@ -84,7 +84,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8.3 — Internet do iPhone");
+        title.setText("BT6 v0.8.4 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -423,6 +423,7 @@ public class MainActivity extends Activity {
             return;
         }
         stopScan();
+        stopService(new Intent(this, InternetService.class));
         if (gatt != null) {
             try { gatt.close(); } catch (SecurityException ignored) { }
             gatt = null;

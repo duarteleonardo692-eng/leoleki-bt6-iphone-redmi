@@ -36,6 +36,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
 
     override init() {
         super.init()
+        RelayDiagnostics.record("bridge launch build83 service=A81")
         manager = CBPeripheralManager(delegate: self, queue: .main)
     }
 
@@ -499,6 +500,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     func peripheralManager(_ peripheral: CBPeripheralManager, didPublishL2CAPChannel PSM: CBL2CAPPSM, error: Error?) {
         guard error == nil else { internetStatus = "Falha L2CAP: \(error!.localizedDescription)"; return }
         psm = PSM
+        RelayDiagnostics.record("published encrypted PSM=\(PSM)")
         internetStatus = "Internet pronta · L2CAP criptografado · Wi-Fi obrigatorio"
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, didReceiveRead request: CBATTRequest) {
@@ -514,7 +516,8 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     }
     func peripheralManager(_ peripheral: CBPeripheralManager, didOpen channel: CBL2CAPChannel?, error: Error?) {
         guard error == nil, let channel = channel else { internetStatus = "Falha ao abrir canal de internet"; return }
-        guard relays.count < 12 else { channel.inputStream.close(); channel.outputStream.close(); return }
+        RelayDiagnostics.record("L2CAP accepted active=\(relays.count)")
+        guard relays.count < 12 else { RelayDiagnostics.record("REJECT channel limit"); channel.inputStream.close(); channel.outputStream.close(); return }
         let id = UUID()
         let relay = L2CAPRelay(channel: channel)
         relays[id] = relay

@@ -35,6 +35,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         self.outputStream = outputStream
         self.requireWiFi = requireWiFi
         super.init()
+        RelayDiagnostics.record("relay init")
         inputStream.delegate = self
         outputStream.delegate = self
         inputStream.schedule(in: .main, forMode: .common)
@@ -49,6 +50,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
 
     func close() {
         guard !closed else { return }
+        RelayDiagnostics.record("relay close phase=\(phase) queued=\(output.count)")
         closed = true
         timer?.invalidate(); timer = nil
         connection?.cancel(); connection = nil
@@ -63,10 +65,15 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     }
 
     func stream(_ stream: Stream, handle event: Stream.Event) {
-        if event.contains(.errorOccurred) { close(); return }
+        if event.contains(.errorOccurred) {
+            let error = stream.streamError as NSError?
+            RelayDiagnostics.record("stream error input=\(stream === inputStream) phase=\(phase) code=\(error?.code ?? 0) domain=\(error?.domain ?? "none")")
+            close(); return
+        }
         if event.contains(.hasBytesAvailable) { readInput() }
         if event.contains(.hasSpaceAvailable) { flush() }
         if event.contains(.endEncountered) {
+            RelayDiagnostics.record("stream EOF input=\(stream === inputStream) phase=\(phase)")
             // A CBL2CAP stream EOF closes the physical channel. It is not a TCP
             // half-close. Release the Network connection and the channel slot now,
             // rather than retaining it for the 120-second network idle timeout.
@@ -101,6 +108,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
             if n < 0 { close(); return }
             if n == 0 { break }
             lastActivity = Date(); onBytes?(n)
+            if phase < 2 { RelayDiagnostics.record("input phase=\(phase) count=\(n)") }
             input.append(contentsOf: buffer.prefix(n))
             guard input.count <= 131072 else { close(); return }
             process()
@@ -121,6 +129,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                 guard input[2..<size].contains(0) else {
                     closingAfterDrain = true; enqueue(Data([5,255])); return
                 }
+                RelayDiagnostics.record("greeting accepted")
                 input.removeFirst(size); phase = 1; enqueue(Data([5,0]))
             }
             if phase == 1 {
@@ -130,6 +139,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                 guard command == 1 || command == 5 else { reject(7); return }
                 guard let address = try SocksProtocol.address(input, offset: 3) else { return }
                 input.removeFirst(3 + address.size)
+                RelayDiagnostics.record("request command=\(command) port=\(address.port)")
                 if command == 5 {
                     phase = 4; enqueue(Data([5,0,0,1,0,0,0,0,0,0]))
                 } else {
@@ -142,6 +152,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                     c.stateUpdateHandler = { [weak self] state in
                         guard let self = self, !self.closed else { return }
                         self.trace("TCP state: \(state)")
+                        RelayDiagnostics.record("TCP state: \(state)")
                         switch state {
                         case .ready:
                             self.phase = 3
@@ -173,7 +184,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                     sendUDP(target, payload)
                 }
             }
-        } catch { close() }
+        } catch { RelayDiagnostics.record("wire parse error phase=\(phase)"); close() }
     }
     private func finishInputIfNeeded() {
         if inputEnded && !sending && input.isEmpty {

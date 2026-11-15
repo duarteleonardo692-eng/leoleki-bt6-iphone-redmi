@@ -135,19 +135,28 @@ public final class InternetService extends VpnService {
     }
 
     private void preflight(int port) throws IOException {
+        String stage = "abrir proxy local";
         try (Socket socket = new Socket()) {
             socket.connect(new InetSocketAddress("127.0.0.1", port), 3000); socket.setSoTimeout(95000);
             DataInputStream in = new DataInputStream(socket.getInputStream());
             OutputStream out = socket.getOutputStream();
+            stage = "resposta inicial do canal Bluetooth";
+            android.util.Log.i("BT6Internet", "Preflight: " + stage);
             out.write(new byte[]{5,1,0});
             if (in.readUnsignedByte()!=5 || in.readUnsignedByte()!=0) throw new IOException("Negociacao SOCKS falhou");
+            stage = "abrir conexao externa no iPhone";
+            android.util.Log.i("BT6Internet", "Preflight: " + stage);
             byte[] host = "example.com".getBytes(StandardCharsets.US_ASCII);
             out.write(new byte[]{5,1,0,3,(byte)host.length});out.write(host);out.write(new byte[]{0,80});
             byte[] reply = new byte[10]; in.readFully(reply);
             if (reply[0]!=5 || reply[1]!=0) throw new IOException("iPhone sem Wi-Fi ou destino inacessivel");
+            stage = "receber resposta HTTP";
+            android.util.Log.i("BT6Internet", "Preflight: " + stage);
             out.write("GET / HTTP/1.1\r\nHost: example.com\r\nConnection: close\r\n\r\n".getBytes(StandardCharsets.US_ASCII));
             byte[] http = new byte[5]; in.readFully(http);
             if (!"HTTP/".equals(new String(http,StandardCharsets.US_ASCII))) throw new IOException("Teste de internet nao retornou HTTP");
+        } catch (IOException e) {
+            throw new IOException(stage + ": " + e.getClass().getSimpleName(), e);
         }
     }
     private synchronized void shutdown() {
