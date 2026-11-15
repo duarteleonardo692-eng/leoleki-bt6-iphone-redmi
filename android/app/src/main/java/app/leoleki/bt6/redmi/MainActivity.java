@@ -293,7 +293,7 @@ public class MainActivity extends Activity {
                 tcpResult = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
             try (java.net.DatagramSocket socket = new java.net.DatagramSocket()) {
-                byte[] payload = "BT6-LAB-UDP-TESTE".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                byte[] payload = "BT6-LAB-UDP-BASICO".getBytes(java.nio.charset.StandardCharsets.UTF_8);
                 java.net.DatagramPacket packet = new java.net.DatagramPacket(payload, payload.length,
                         java.net.InetAddress.getByName(VpnProbeService.DESTINATION), 5353);
                 socket.send(packet);
