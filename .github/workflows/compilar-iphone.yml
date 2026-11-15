@@ -20,7 +20,8 @@ jobs:
           set -euo pipefail
           ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
           test -f "$ZIP" || { echo "Arquivo BT6 ZIP nao encontrado"; exit 1; }
-          unzip -oq "$ZIP" 'project.yml' 'ios/*'
+          # project.yml v0.2 fica no repositorio, com UIBackgroundModes corretos.
+          unzip -oq "$ZIP" 'ios/*'
           test -f project.yml
           test -f ios/Sources/BT6iPhoneApp.swift
           echo "Fontes iOS extraidos corretamente"
@@ -38,6 +39,15 @@ jobs:
 
       - name: Gerar projeto Xcode
         run: xcodegen generate --spec project.yml
+
+      - name: Validar permissao BLE em segundo plano
+        shell: bash
+        run: |
+          set -euo pipefail
+          test -f ios/Info.plist
+          plutil -lint ios/Info.plist
+          FOUND=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes:0" ios/Info.plist)
+          test "$FOUND" = "bluetooth-peripheral" || { echo "Background BLE ausente"; exit 1; }
 
       - name: Compilar para iPhone sem assinatura
         shell: bash
@@ -59,6 +69,8 @@ jobs:
           set -euo pipefail
           APP="$RUNNER_TEMP/BT6Build/Build/Products/Release-iphoneos/BT6iPhone.app"
           test -d "$APP"
+          MODE=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes:0" "$APP/Info.plist")
+          test "$MODE" = "bluetooth-peripheral" || { echo "IPA sem background BLE"; exit 1; }
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
           (cd dist && zip -qr BT6-iPhone-unsigned.ipa Payload)
