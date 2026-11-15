@@ -1,0 +1,73 @@
+name: BT6 - Compilar iPhone (IPA sem assinatura)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - name: Baixar o repositorio
+        uses: actions/checkout@v4
+
+      - name: Extrair codigo do ZIP enviado
+        shell: bash
+        run: |
+          set -euo pipefail
+          ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
+          test -f "$ZIP" || { echo "Arquivo BT6 ZIP nao encontrado"; exit 1; }
+          unzip -oq "$ZIP" 'project.yml' 'ios/*'
+          test -f project.yml
+          test -f ios/Sources/BT6iPhoneApp.swift
+          echo "Fontes iOS extraidos corretamente"
+
+      - name: Mostrar versao do Xcode
+        run: xcodebuild -version
+
+      - name: Disponibilizar XcodeGen
+        shell: bash
+        run: |
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Gerar projeto Xcode
+        run: xcodegen generate --spec project.yml
+
+      - name: Compilar para iPhone sem assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project BT6iPhone.xcodeproj \
+            -scheme BT6iPhone \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/BT6Build" \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+
+      - name: Empacotar IPA sem assinatura
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/BT6Build/Build/Products/Release-iphoneos/BT6iPhone.app"
+          test -d "$APP"
+          mkdir -p dist/Payload
+          cp -R "$APP" dist/Payload/
+          (cd dist && zip -qr BT6-iPhone-unsigned.ipa Payload)
+          rm -rf dist/Payload
+          ls -lh dist/BT6-iPhone-unsigned.ipa
+
+      - name: Disponibilizar IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: BT6-iPhone-IPA-sem-assinatura
+          path: dist/BT6-iPhone-unsigned.ipa
+          retention-days: 7
