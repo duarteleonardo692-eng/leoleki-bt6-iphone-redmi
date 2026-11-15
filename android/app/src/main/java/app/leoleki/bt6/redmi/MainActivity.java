@@ -45,9 +45,9 @@ import java.util.UUID;
 
 public class MainActivity extends Activity {
     // UUIDs exclusivos da v0.3: evita acoplamento acidental com o iPhone v0.2.
-    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A21");
-    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A22");
-    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A23");
+    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A31");
+    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A32");
+    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A33");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB");
     private static final int REQ_BT_PERMISSIONS = 901;
     private static final int REQ_VPN_LAB = 902;
@@ -72,13 +72,13 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 — Redmi v0.5.2 — VPN LAB");
+        title.setText("BT6 — Redmi v0.6 — VPN ↔ iPhone");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "BT6 v0.5.2: corrige permissoes de socket e leitura TUN. Conecta ao iPhone v0.4. Ainda nao encaminha internet para outros apps.");
-        statusView = addText(content, "Status: pronto para procurar iPhone v0.4");
+        addText(content, "BT6 v0.6: testa ida e volta UDP real entre o socket deste app, VPN, Bluetooth, iPhone e VPN. Ainda NAO libera internet para Chrome ou WhatsApp.");
+        statusView = addText(content, "Status: pronto para procurar iPhone v0.6");
         statusView.setTextSize(18f);
-        addButton(content, "1. Buscar iPhone BT6 v0.4", this::ensurePermissionsAndScan);
+        addButton(content, "1. Buscar iPhone BT6 v0.6", this::ensurePermissionsAndScan);
         addButton(content, "2. Testar Bluetooth (PING)", () -> sendCommand((byte)0x50));
         addButton(content, "3. Testar internet (HTTP 200)", () -> sendCommand((byte)0x47));
         addButton(content, "4. Testar transporte TCP real (example.com:80)", () -> sendCommand((byte)0x54));
@@ -103,6 +103,8 @@ public class MainActivity extends Activity {
         addText(content, "ATENCAO: ativar uma VPN de teste pode interromper outra VPN existente no aparelho. Ela nao libera internet ao Chrome ou WhatsApp.");
         addButton(content, "Iniciar VPN LAB (somente teste)", this::confirmAndPrepareVpnLab);
         addButton(content, "Testar TCP + UDP e verificar captura", this::generateLabPacket);
+        addButton(content, "TESTAR UDP DE IDA E VOLTA VIA IPHONE", this::testUdpRoundTrip);
+        addText(content, "Novo teste: envia UDP pelo TUN Android, usa o iPhone para confirmar HTTPS e devolve uma resposta UDP ao proprio BT6. Apenas diagnostico.");
         addButton(content, "Diagnosticar rede Android", this::diagnoseAndroidNetwork);
         addButton(content, "Verificar pacotes VPN LAB", this::showVpnLabStatus);
         addButton(content, "DESLIGAR VPN LAB", this::stopVpnLab);
@@ -111,6 +113,10 @@ public class MainActivity extends Activity {
         logView = addText(content, "Registro de testes:\n");
         logView.setTextSize(13f);
         setContentView(scroll);
+        VpnProbeService.setProbeListener(() -> handler.post(() -> {
+            status("VPN capturou pacote UDP real. Solicitando HTTPS do iPhone v0.6 pelo BLE...");
+            sendCommand((byte)0x56);
+        }));
     }
 
     private TextView addText(LinearLayout container, String label) {
@@ -185,7 +191,8 @@ public class MainActivity extends Activity {
                 + " | IPv4: " + VpnProbeService.capturedPackets.get()
                 + " | TCP: " + VpnProbeService.capturedTcpPackets.get()
                 + " | UDP: " + VpnProbeService.capturedUdpPackets.get()
-                + " | Quadros invalidos: " + VpnProbeService.malformedFrames.get());
+                + " | Quadros invalidos: " + VpnProbeService.malformedFrames.get()
+                + " | Resposta LAB: " + VpnProbeService.probeState);
     }
 
     private void diagnoseAndroidNetwork() {
@@ -228,6 +235,43 @@ public class MainActivity extends Activity {
                 == PackageManager.PERMISSION_GRANTED;
         status("Permissao INTERNET (abrir sockets): " + (allowed ? "OK" : "AUSENTE") +
                 ". Isso nao significa que o Android tenha acesso a rede externa.");
+    }
+
+    private void testUdpRoundTrip() {
+        if (!VpnProbeService.active) {
+            status("Primeiro autorize e inicie a VPN LAB desta versao.");
+            return;
+        }
+        if (!isReady()) {
+            status("Primeiro conecte o iPhone BT6 v0.6 pelo Bluetooth.");
+            return;
+        }
+        status("Iniciando teste UDP da VPN Android até o iPhone e de volta...");
+        new Thread(() -> {
+            try (java.net.DatagramSocket socket = new java.net.DatagramSocket()) {
+                socket.setSoTimeout(17000);
+                java.net.InetAddress host = java.net.InetAddress.getByName(VpnProbeService.DESTINATION);
+                socket.connect(host, 5353);
+                byte[] request = "BT6-LAB-UDP-TESTE".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                java.net.DatagramPacket outbound =
+                        new java.net.DatagramPacket(request, request.length, host, 5353);
+                long started = android.os.SystemClock.elapsedRealtime();
+                socket.send(outbound);
+                byte[] answer = new byte[512];
+                java.net.DatagramPacket incoming =
+                        new java.net.DatagramPacket(answer, answer.length);
+                socket.receive(incoming);
+                long elapsed = android.os.SystemClock.elapsedRealtime() - started;
+                String reply = new String(incoming.getData(), incoming.getOffset(),
+                        incoming.getLength(), java.nio.charset.StandardCharsets.UTF_8);
+                status("UDP LAB ida e volta CONFIRMADA em " + elapsed + " ms | " + reply);
+            } catch (Exception exception) {
+                status("Teste UDP LAB nao concluiu: " +
+                        exception.getClass().getSimpleName() + ": " + exception.getMessage()
+                        + " | " + VpnProbeService.probeState);
+            }
+            showVpnLabStatus();
+        }, "BT6-UDP-ROUNDTRIP").start();
     }
 
     private void generateLabPacket() {
@@ -337,7 +381,7 @@ public class MainActivity extends Activity {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         scanning = true;
         scanner.startScan(filters, settings, callback);
-        status("Buscando iPhone BT6 v0.4. Mantenha o app v0.3 aberto no iPhone.");
+        status("Buscando iPhone BT6 v0.6. Mantenha o app v0.3 aberto no iPhone.");
         handler.postDelayed(() -> {
             if (scanning) {
                 stopScan();
@@ -357,7 +401,7 @@ public class MainActivity extends Activity {
             if (!scanning || result.getDevice() == null) return;
             BluetoothDevice device = result.getDevice();
             stopScan();
-            status("iPhone BT6 v0.4 encontrado. Conectando...");
+            status("iPhone BT6 v0.6 encontrado. Conectando...");
             connect(device);
         }
 
@@ -414,7 +458,7 @@ public class MainActivity extends Activity {
         @Override public void onDescriptorWrite(BluetoothGatt connection, BluetoothGattDescriptor descriptor, int code) {
             if (CCCD.equals(descriptor.getUuid()) && code == BluetoothGatt.GATT_SUCCESS) {
                 notificationReady = true;
-                status("Conectado ao iPhone v0.4. Pronto para transferir.");
+                status("Conectado ao iPhone v0.6. Pronto para transferir.");
             } else {
                 status("Falha nas notificacoes BLE: " + code);
             }
@@ -592,6 +636,12 @@ public class MainActivity extends Activity {
             } else {
                 String text = new String(data, StandardCharsets.UTF_8);
                 runOnUiThread(() -> pageView.setText(text));
+                if (text.startsWith("BT6-UDP-RELAY")) {
+                    boolean accepted = VpnProbeService.deliverProbeReply(text);
+                    status(accepted
+                            ? "Resposta confirmada no iPhone; injetando UDP de volta no socket Android..."
+                            : "Resposta BLE recebida sem pedido UDP LAB pendente");
+                }
                 long elapsed = requestStartMs > 0L
                         ? android.os.SystemClock.elapsedRealtime() - requestStartMs : 0L;
                 status("Recebidos " + data.length + " bytes reais; integridade OK"
@@ -602,6 +652,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        VpnProbeService.setProbeListener(null);
         super.onDestroy();
         stopScan();
         if (gatt != null) {
