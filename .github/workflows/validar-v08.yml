@@ -1,0 +1,30 @@
+name: BT6 v0.8 - validar e compilar iPhone
+on:
+  push:
+    branches: [feature/bt6-v08-l2cap-internet]
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  iphone:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Testar codec usado pelo relay real
+        run: |
+          swiftc ios/Sources/SocksProtocol.swift tests/ProtocolTests.swift -o /tmp/bt6-protocol-tests
+          /tmp/bt6-protocol-tests
+      - name: Compilar iPhone
+        run: |
+          if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi
+          xcodegen generate
+          xcodebuild -project BT6iPhone.xcodeproj -scheme BT6iPhone -configuration Release -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath /tmp/BT6Build CODE_SIGNING_ALLOWED=NO build
+          mkdir -p dist/Payload
+          cp -R /tmp/BT6Build/Build/Products/Release-iphoneos/BT6iPhone.app dist/Payload/
+          (cd dist && zip -qr BT6-iPhone-v0.8-unsigned.ipa Payload)
+      - name: Disponibilizar compilacao experimental
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "bt6-v08-build-${GITHUB_RUN_NUMBER}" dist/BT6-iPhone-v0.8-unsigned.ipa --target "$GITHUB_SHA" --title "BT6 v0.8 experimental - build ${GITHUB_RUN_NUMBER}" --prerelease --notes "Compilacao sem assinatura. Codec validado em CI; Bluetooth, VPN e velocidade nos aparelhos ainda pendentes. Use junto do APK v0.8."

@@ -4,15 +4,15 @@ plugins {
 
 android {
     namespace 'app.leoleki.bt6.redmi'
-    compileSdk 35
+    compileSdk 34
 
     defaultConfig {
         // App separado para nao apagar o BT6 v0.1 nem depender do certificado debug anterior.
-        applicationId 'app.leoleki.bt6.redmi.v07'
-        minSdk 26
+        applicationId 'app.leoleki.bt6.redmi.v08'
+        minSdk 29
         targetSdk 34
-        versionCode 9
-        versionName '0.7-navegacao-ble'
+        versionCode 80
+        versionName '0.8-l2cap-internet'
     }
 
     compileOptions {
@@ -20,3 +20,5 @@ android {
         targetCompatibility JavaVersion.VERSION_17
     }
 }
+
+dependencies { implementation files("libs/hev-socks5-tunnel-2.20.0.aar") }

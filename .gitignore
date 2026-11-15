@@ -1,0 +1,13 @@
+.DS_Store
+.gradle/
+.idea/
+**/build/
+*.iml
+*.xcworkspace/
+*.xcodeproj/
+*.ipa
+local.properties
+
+android/app/libs/
+*.class
+dist/
