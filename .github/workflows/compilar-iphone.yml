@@ -85,7 +85,7 @@ jobs:
           test "$MODE" = "bluetooth-peripheral" || { echo "IPA sem background BLE"; exit 1; }
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
-          (cd dist && zip -qr BT6-iPhone-unsigned.ipa Payload)
+          (cd dist && zip -qr BT6-iPhone-v0.3-unsigned.ipa Payload)
           rm -rf dist/Payload
           ls -lh dist/BT6-iPhone-v0.3-unsigned.ipa
 
