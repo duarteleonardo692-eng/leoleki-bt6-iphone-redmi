@@ -1,6 +1,9 @@
 name: BT6 - Compilar iPhone (IPA sem assinatura)
 
 on:
+  push:
+    branches:
+      - feature/bt6-v03-transferencia-real
   workflow_dispatch:
 
 permissions:
@@ -21,10 +24,12 @@ jobs:
           ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
           test -f "$ZIP" || { echo "Arquivo BT6 ZIP nao encontrado"; exit 1; }
           # project.yml v0.2 fica no repositorio, com UIBackgroundModes corretos.
-          unzip -oq "$ZIP" 'ios/*'
+          # -n preserva os fontes v0.3 que agora ficam fora do ZIP.
+          unzip -nq "$ZIP" 'ios/*'
           test -f project.yml
           test -f ios/Sources/BT6iPhoneApp.swift
-          echo "Fontes iOS extraidos corretamente"
+          grep -q "BT6 v0.3" ios/Sources/BT6PeripheralBridge.swift
+          echo "Fontes iOS v0.3 presentes"
 
       - name: Mostrar versao do Xcode
         run: xcodebuild -version
@@ -48,6 +53,13 @@ jobs:
           plutil -lint ios/Info.plist
           FOUND=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes:0" ios/Info.plist)
           test "$FOUND" = "bluetooth-peripheral" || { echo "Background BLE ausente"; exit 1; }
+
+      - name: Verificar identidade isolada v0.3
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -q 'app.leoleki.bt6.iphone.v03' project.yml
+          grep -q 'AD08C143-7581-4612-9D63-20D9540C4A11' ios/Sources/BT6PeripheralBridge.swift
 
       - name: Compilar para iPhone sem assinatura
         shell: bash
@@ -75,7 +87,7 @@ jobs:
           cp -R "$APP" dist/Payload/
           (cd dist && zip -qr BT6-iPhone-unsigned.ipa Payload)
           rm -rf dist/Payload
-          ls -lh dist/BT6-iPhone-unsigned.ipa
+          ls -lh dist/BT6-iPhone-v0.3-unsigned.ipa
 
       - name: Publicar IPA na aba Releases (sem usar armazenamento de artefatos)
         shell: bash
@@ -83,9 +95,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-ios-teste-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-iPhone-unsigned.ipa \
+          TAG="bt6-ios-v03-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-iPhone-v0.3-unsigned.ipa \
             --target "$GITHUB_SHA" \
-            --title "BT6 iPhone - teste ${GITHUB_RUN_NUMBER}" \
-            --notes "IPA experimental sem assinatura. Reassine para instalacao pessoal no iPhone; nao fornece internet geral ao Android nesta etapa." \
+            --title "BT6 iPhone v0.3 - teste ${GITHUB_RUN_NUMBER}" \
+            --notes "IPA v0.3 experimental com transferencia de texto HTTPS por BLE; instalar usando Sideloadly. Nao oferece internet geral a apps Android." \
             --prerelease
