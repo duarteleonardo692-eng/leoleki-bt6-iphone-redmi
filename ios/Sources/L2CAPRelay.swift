@@ -20,7 +20,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     private var closingAfterDrain = false
     private var inputEnded = false
     private var lastActivity = Date()
-    private func trace(_ text: String) { if ProcessInfo.processInfo.environment["BT6_TRACE"] == "1" { print(text) } }
+    private func trace(_ text: String) { if ProcessInfo.processInfo.environment["BT6_TRACE"] == "1" { FileHandle.standardError.write(Data((text + "\n").utf8)) } }
     private var timer: Timer?
     var onClose: (() -> Void)?
     var onBytes: ((Int) -> Void)?
@@ -153,6 +153,10 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                         }
                     }
                     c.start(queue: .main)
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+                        guard let self = self, !self.closed, self.phase == 2 else { return }
+                        c.cancel(); self.reject(4)
+                    }
                 }
             }
             if phase == 3 && !sending && !input.isEmpty {
@@ -217,7 +221,8 @@ final class L2CAPRelay: NSObject, StreamDelegate {
             guard let self = self, !self.closed else { return }
             self.trace("UDP completion: \(String(describing: error))")
             self.sending = false
-            if error != nil { self.close(); return }
+            // UDP is best effort. Oversize datagrams (EMSGSIZE) are dropped;
+            // an individual UDP error must not destroy other destinations.
             self.process(); self.readInput()
         })
     }

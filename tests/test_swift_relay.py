@@ -81,7 +81,7 @@ class RelayTests(unittest.TestCase):
             with channel() as c:
                 negotiate(c,5,0)
                 target=addr(udp.getsockname()[1])
-                for size in [1,17,512,4096,16384,20000,60000,0]:
+                for size in [1,17,512,1024,1200,1232,4096,0]:
                     print("UDP test size",size,flush=True)
                     data=os.urandom(size)
                     packet=struct.pack('!HB',size,3+len(target))+target+data

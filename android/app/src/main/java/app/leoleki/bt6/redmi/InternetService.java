@@ -28,7 +28,7 @@ public final class InternetService extends VpnService {
     private Thread startup;
 
     @Override public int onStartCommand(Intent intent, int flags, int id) {
-        if (intent == null || STOP.equals(intent.getAction())) { shutdown(); stopSelf(); return START_NOT_STICKY; }
+        if (intent == null || STOP.equals(intent.getAction())) { status = "Internet Bluetooth desligada"; shutdown(); stopSelf(); return START_NOT_STICKY; }
         if (!START.equals(intent.getAction()) || starting || tun != null) return START_NOT_STICKY;
         final String address = intent.getStringExtra("device");
         final int psm = intent.getIntExtra("psm", 0);
@@ -85,6 +85,7 @@ public final class InternetService extends VpnService {
                     }
                 }, 3, 3, TimeUnit.SECONDS);
             } catch (Exception | LinkageError e) {
+                if (generation != attempt) return;
                 status = "Nao foi possivel iniciar: " + e.getClass().getSimpleName() + " " + e.getMessage();
                 shutdown(); stopSelf();
             }
@@ -98,9 +99,14 @@ public final class InternetService extends VpnService {
         if (stopping) throw new IOException("Desligado");
         BluetoothSocket socket = device.createL2capChannel(psm);
         sockets.add(socket);
-        ScheduledFuture<?> deadline = timers.schedule(() -> {
-            try { socket.close(); } catch (IOException ignored) { }
-        }, 20, TimeUnit.SECONDS);
+        ScheduledFuture<?> deadline;
+        try {
+            deadline = timers.schedule(() -> {
+                try { socket.close(); } catch (IOException ignored) { }
+            }, 20, TimeUnit.SECONDS);
+        } catch (RejectedExecutionException e) {
+            sockets.remove(socket); socket.close(); throw new IOException("Servico encerrado", e);
+        }
         try {
             if (stopping) throw new IOException("Desligado");
             socket.connect(); deadline.cancel(false);
