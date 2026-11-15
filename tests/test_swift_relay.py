@@ -93,6 +93,25 @@ class RelayTests(unittest.TestCase):
                     self.assertEqual(read(c,length),data)
             thread.join(timeout=5);self.assertFalse(thread.is_alive())
 
+    def test_peer_eof_releases_channel(self):
+        with socket.socket() as target, socket.socket() as listener:
+            target.bind(('127.0.0.1',0)); target.listen(); target.settimeout(10)
+            listener.bind(('127.0.0.1',0)); listener.listen(); listener.settimeout(10)
+            process=subprocess.Popen([BINARY,str(listener.getsockname()[1])])
+            try:
+                peer,_=listener.accept()
+                with peer:
+                    peer.settimeout(10)
+                    negotiate(peer,1,target.getsockname()[1])
+                    remote,_=target.accept()
+                    with remote:
+                        # A Bluetooth stream cannot preserve a TCP half-close;
+                        # the same input EOF in this harness must free its slot.
+                        peer.shutdown(socket.SHUT_WR)
+                        self.assertEqual(process.wait(timeout=3),0)
+            finally:
+                if process.poll() is None: process.terminate();process.wait(timeout=5)
+
     def test_denied_auth(self):
         with channel() as c:
             c.sendall(b'\x05\x01\x02')

@@ -11,8 +11,8 @@ android {
         applicationId 'app.leoleki.bt6.redmi.v08'
         minSdk 29
         targetSdk 34
-        versionCode 80
-        versionName '0.8-l2cap-internet'
+        versionCode 82
+        versionName '0.8.2-compatibilidade-le'
     }
 
     compileOptions {

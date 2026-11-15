@@ -15,6 +15,7 @@ public final class StreamBridge implements AutoCloseable {
     }
     public interface Factory { Link open() throws IOException; }
     private final Factory factory;
+    private final Semaphore connecting = new Semaphore(1, true);
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
     private final ExecutorService workers = Executors.newFixedThreadPool(24);
     private final Semaphore slots = new Semaphore(12);
@@ -52,7 +53,14 @@ public final class StreamBridge implements AutoCloseable {
             try {
                 client.setTcpNoDelay(true);
                 // Factory must itself bound/cancel connecting Bluetooth sockets.
-                Link opened = factory.open();
+                Link opened;
+                // Pairing/authentication is shared by the BLE link. Never launch
+                // concurrent secure handshakes when the VPN opens several flows.
+                connecting.acquire();
+                try {
+                    if (closed) throw new IOException("Relay closed");
+                    opened = factory.open();
+                } finally { connecting.release(); }
                 synchronized (this) {
                     if (ended) { opened.close(); return; }
                     link = opened;

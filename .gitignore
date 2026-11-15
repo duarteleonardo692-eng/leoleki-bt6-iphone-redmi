@@ -11,3 +11,5 @@ local.properties
 android/app/libs/
 *.class
 dist/
+
+/diagnostico-aparelhos/

@@ -3,6 +3,7 @@ import java.io.*;
 import java.net.*;
 import java.util.*;
 import java.util.concurrent.*;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class StreamBridgeTest {
     static StreamBridge.Link link(Socket socket) {
@@ -25,7 +26,14 @@ public class StreamBridgeTest {
                     } catch(IOException ignored) {} });
                 } catch(IOException e) { break; }
             });
-            StreamBridge relay = new StreamBridge(() -> link(new Socket("127.0.0.1",echo.getLocalPort())));
+            AtomicInteger opening = new AtomicInteger(), peak = new AtomicInteger();
+            StreamBridge relay = new StreamBridge(() -> {
+                int n = opening.incrementAndGet(); peak.accumulateAndGet(n, Math::max);
+                try {
+                    try { Thread.sleep(15); } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException(e); }
+                    return link(new Socket("127.0.0.1",echo.getLocalPort()));
+                } finally { opening.decrementAndGet(); }
+            });
             List<Future<?>> jobs = new ArrayList<>();
             for (int k=0;k<8;k++) {
                 final int seed=k;
@@ -41,6 +49,7 @@ public class StreamBridgeTest {
                 }));
             }
             for (Future<?> job:jobs) job.get(20,TimeUnit.SECONDS);
+            check(peak.get()==1,"secure handshakes must be serialized");
             check(relay.sent.get()==8L*1048576,"upload count");
             check(relay.received.get()==8L*1048576,"download count");
             Socket blocked=new Socket("127.0.0.1",relay.port());blocked.setSoTimeout(3000);
@@ -51,6 +60,6 @@ public class StreamBridgeTest {
         try (StreamBridge broken=new StreamBridge(() -> {throw new IOException("offline");}); Socket c=new Socket("127.0.0.1",broken.port())) {
             c.setSoTimeout(3000);check(c.getInputStream().read()==-1,"failed link releases client");
         }
-        System.out.println("PASS: eight concurrent 1MiB random full duplex round trips, byte counters, close, double close, failed link");
+        System.out.println("PASS: serialized secure channel opens; eight concurrent 1MiB random full duplex round trips, byte counters, close, double close, failed link");
     }
 }

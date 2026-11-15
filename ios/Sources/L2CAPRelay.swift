@@ -67,10 +67,10 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         if event.contains(.hasBytesAvailable) { readInput() }
         if event.contains(.hasSpaceAvailable) { flush() }
         if event.contains(.endEncountered) {
-            if stream === inputStream && phase == 3 {
-                inputEnded = true
-                finishInputIfNeeded()
-            } else { close() }
+            // A CBL2CAP stream EOF closes the physical channel. It is not a TCP
+            // half-close. Release the Network connection and the channel slot now,
+            // rather than retaining it for the 120-second network idle timeout.
+            close()
         }
     }
 

@@ -80,7 +80,7 @@ public final class InternetService extends VpnService {
                     String yaml = "tunnel:\n  mtu: 1280\n  ipv4: 10.88.0.2\n  ipv6: 'fd88::2'\n" +
                         "socks5:\n  address: 127.0.0.1\n  port: " + bridge.port() + "\n  udp: tcp\n" +
                         "mapdns:\n  address: 198.18.0.2\n  port: 53\n  network: 100.64.0.0\n  netmask: 255.192.0.0\n  cache-size: 2048\n" +
-                        "misc:\n  max-session-count: 10\n  connect-timeout: 20000\n  tcp-read-write-timeout: 120000\n  udp-read-write-timeout: 60000\n  log-level: error\n";
+                        "misc:\n  max-session-count: 4\n  connect-timeout: 20000\n  tcp-read-write-timeout: 120000\n  udp-read-write-timeout: 60000\n  log-level: error\n";
                     try (FileOutputStream out = new FileOutputStream(config)) { out.write(yaml.getBytes(StandardCharsets.UTF_8)); }
                     if (!TProxyService.TProxyStartService(config.getAbsolutePath(), tun.getFd())) throw new IOException("Falha no motor VPN");
                     starting = false;
@@ -93,6 +93,7 @@ public final class InternetService extends VpnService {
                 }, 3, 3, TimeUnit.SECONDS);
             } catch (Exception | LinkageError e) {
                 if (generation != attempt) return;
+                android.util.Log.w("BT6Internet", "Inicio falhou: " + e.getClass().getSimpleName());
                 status = "Nao foi possivel iniciar: " + e.getClass().getSimpleName() + " " + e.getMessage();
                 shutdown(); stopSelf();
             }
@@ -104,32 +105,38 @@ public final class InternetService extends VpnService {
     @SuppressLint("MissingPermission")
     private StreamBridge.Link openLink(BluetoothDevice device, int psm) throws IOException {
         if (stopping) throw new IOException("Desligado");
-        BluetoothSocket socket = device.createL2capChannel(psm);
+        // The iPhone publishes this PSM with withEncryption:true and therefore
+        // enforces LE encryption. Avoid Android's additional authenticated-link
+        // requirement, which can trigger Classic/LE reauthentication and bond loss
+        // on these phones. There is no plaintext PSM fallback in the iOS app.
+        BluetoothSocket socket = device.createInsecureL2capChannel(psm);
         sockets.add(socket);
         ScheduledFuture<?> deadline;
         try {
             deadline = timers.schedule(() -> {
                 try { socket.close(); } catch (IOException ignored) { }
-            }, 20, TimeUnit.SECONDS);
+            }, device.getBondState() == BluetoothDevice.BOND_BONDED ? 20 : 90, TimeUnit.SECONDS);
         } catch (RejectedExecutionException e) {
             sockets.remove(socket); socket.close(); throw new IOException("Servico encerrado", e);
         }
         try {
             if (stopping) throw new IOException("Desligado");
             socket.connect(); deadline.cancel(false);
+            android.util.Log.i("BT6Internet", "Canal criptografado conectado; vinculo=" + device.getBondState());
             return new StreamBridge.Link() {
                 public InputStream input() throws IOException { return socket.getInputStream(); }
                 public OutputStream output() throws IOException { return socket.getOutputStream(); }
                 public void close() throws IOException { sockets.remove(socket); socket.close(); }
             };
         } catch (IOException e) {
+            android.util.Log.w("BT6Internet", "Falha ao abrir canal: " + e.getClass().getSimpleName());
             deadline.cancel(false); sockets.remove(socket); socket.close(); throw e;
         }
     }
 
     private void preflight(int port) throws IOException {
         try (Socket socket = new Socket()) {
-            socket.connect(new InetSocketAddress("127.0.0.1", port), 3000); socket.setSoTimeout(23000);
+            socket.connect(new InetSocketAddress("127.0.0.1", port), 3000); socket.setSoTimeout(95000);
             DataInputStream in = new DataInputStream(socket.getInputStream());
             OutputStream out = socket.getOutputStream();
             out.write(new byte[]{5,1,0});
