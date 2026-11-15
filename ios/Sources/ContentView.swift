@@ -6,7 +6,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Ponte Bluetooth BT6 v0.6") {
+                Section("Ponte Bluetooth BT6 v0.7") {
                     Text("iPhone XR → Redmi Note 11 sem PC durante a comunicacao")
                         .font(.subheadline)
                     LabeledContent("Bluetooth", value: bridge.bluetoothStatus)
@@ -18,16 +18,16 @@ struct ContentView: View {
                     Text("Ultimo pedido: \(bridge.lastRequest)")
                     Text("Ultima resposta: \(bridge.lastResponse)")
                     LabeledContent("Bytes por BLE", value: "\(bridge.transferredBytes)")
-                    Text("Na v0.6, o Redmi tambem pode solicitar uma conexao TCP real a example.com:80. O iPhone repassa a resposta bruta em pacotes BLE, com checksum.")
+                    Text("Na v0.7, o Redmi pode abrir paginas HTTPS dentro do navegador BT6 e seguir links, recebendo HTML simplificado pela ponte Bluetooth.")
                         .font(.footnote)
                 }
                 Section("Limites desta versao") {
-                    Text("Esta e uma demonstracao de conteudo real dentro do aplicativo BT6 Redmi. Apenas HTTPS de example.com, www.iana.org e pt.wikipedia.org.")
+                    Text("Navegador experimental para sites HTTPS publicos: texto e links. Nao suporta videos, JS, contas, uploads nem imagens externas.")
                     Text("Ainda nao fornece internet geral ao Chrome, WhatsApp ou outros aplicativos. O iOS pode limitar tarefas de rede e Bluetooth em segundo plano.")
                         .font(.footnote)
                 }
             }
-            .navigationTitle("BT6 iPhone v0.6")
+            .navigationTitle("BT6 iPhone v0.7")
         }
     }
 }
