@@ -20,6 +20,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     private var closingAfterDrain = false
     private var inputEnded = false
     private var lastActivity = Date()
+    private func trace(_ text: String) { if ProcessInfo.processInfo.environment["BT6_TRACE"] == "1" { print(text) } }
     private var timer: Timer?
     var onClose: (() -> Void)?
     var onBytes: ((Int) -> Void)?
@@ -140,6 +141,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                     connection = c
                     c.stateUpdateHandler = { [weak self] state in
                         guard let self = self, !self.closed else { return }
+                        self.trace("TCP state: \(state)")
                         switch state {
                         case .ready:
                             self.phase = 3
@@ -190,6 +192,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     }
     private func sendUDP(_ target: SocksProtocol.Address, _ payload: Data) {
         guard target.port != 0 else { return }
+        trace("UDP payload: \(payload.count)")
         let key = "\(target.host):\(target.port)"
         let c: NWConnection
         if let existing = udpConnections[key] { c = existing }
@@ -201,7 +204,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
             c.stateUpdateHandler = { [weak self, weak c] state in
                 guard let self = self, let c = c, !self.closed else { return }
                 switch state {
-                case .ready: self.receiveUDP(c, target)
+                case .ready: self.trace("UDP ready"); self.receiveUDP(c, target)
                 case .waiting, .failed: self.udpConnections.removeValue(forKey: key); c.cancel()
                 default: break
                 }
@@ -210,8 +213,9 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         }
         // Only one datagram queued to Network at a time; L2CAP credits provide flow control.
         sending = true
-        c.send(content: payload, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { [weak self] error in
+        c.send(content: payload.isEmpty ? nil : payload, contentContext: .defaultMessage, isComplete: true, completion: .contentProcessed { [weak self] error in
             guard let self = self, !self.closed else { return }
+            self.trace("UDP completion: \(String(describing: error))")
             self.sending = false
             if error != nil { self.close(); return }
             self.process(); self.readInput()

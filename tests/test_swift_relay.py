@@ -27,7 +27,7 @@ def read(sock, size):
 def channel():
     with socket.socket() as listener:
         listener.bind(('127.0.0.1', 0)); listener.listen(); listener.settimeout(10)
-        process = subprocess.Popen([BINARY, str(listener.getsockname()[1])])
+        process = subprocess.Popen([BINARY, str(listener.getsockname()[1])], env={**os.environ, 'BT6_TRACE':'1'})
         try:
             sock, _ = listener.accept()
             with sock:
@@ -81,7 +81,8 @@ class RelayTests(unittest.TestCase):
             with channel() as c:
                 negotiate(c,5,0)
                 target=addr(udp.getsockname()[1])
-                for size in [0,1,17,512,4096,16384,20000,60000]:
+                for size in [1,17,512,4096,16384,20000,60000,0]:
+                    print("UDP test size",size,flush=True)
                     data=os.urandom(size)
                     packet=struct.pack('!HB',size,3+len(target))+target+data
                     c.sendall(packet)
