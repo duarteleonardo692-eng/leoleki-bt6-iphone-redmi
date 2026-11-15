@@ -1,0 +1,22 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'app.leoleki.bt6.redmi'
+    compileSdk 35
+
+    defaultConfig {
+        // App separado para nao apagar o BT6 v0.1 nem depender do certificado debug anterior.
+        applicationId 'app.leoleki.bt6.redmi.v03'
+        minSdk 26
+        targetSdk 34
+        versionCode 3
+        versionName '0.3-test'
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
