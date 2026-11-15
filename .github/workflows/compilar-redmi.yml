@@ -3,7 +3,7 @@ name: BT6 - Compilar Redmi (APK)
 on:
   push:
     branches:
-      - feature/bt6-v05-vpn-lab
+      - feature/bt6-v051-vpn-diagnostico
   workflow_dispatch:
 
 permissions:
@@ -29,10 +29,12 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'app.leoleki.bt6.redmi.v05' android/app/build.gradle
+          grep -q 'app.leoleki.bt6.redmi.v051' android/app/build.gradle
           grep -q 'addAllowedApplication(getPackageName())' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q '198.18.0.0' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'MAX_BODY_BYTES = 8192' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'DatagramSocket' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'rawTunReads' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -75,8 +77,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.5-vpn-lab.apk
-          ls -lh dist/BT6-Redmi-v0.5-vpn-lab.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk
+          ls -lh dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk
 
       - name: Publicar APK de teste no GitHub Releases
         shell: bash
@@ -84,9 +86,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-android-v05-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.5-vpn-lab.apk \
+          TAG="bt6-android-v051-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk \
             --target "$GITHUB_SHA" \
-            --title "BT6 Redmi v0.5 - teste ${GITHUB_RUN_NUMBER}" \
-            --notes "BT6 Redmi v0.5 VPN LAB experimental. Compatível com iPhone v0.4. VPN SOMENTE opcional, com captura local do próprio BT6 em 198.18.0.0/15; NÃO fornece internet ao Chrome/WhatsApp e pode substituir outra VPN ativa." \
+            --title "BT6 Redmi v0.5.1 - diagnostico ${GITHUB_RUN_NUMBER}" \
+            --notes "BT6 v0.5.1 experimental: diagnostico do tunel VPN, tentativa TCP+UDP e erros de socket. Requer iPhone BT6 v0.4 para BLE. O VPN LAB e opcional, restrito a este app, nao fornece internet a outros aplicativos, pode substituir outra VPN." \
             --prerelease
