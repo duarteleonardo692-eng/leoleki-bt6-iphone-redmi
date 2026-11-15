@@ -5,9 +5,9 @@ import Combine
 
 /// BT6 v0.4: retransmissao TCP de diagnostico e texto HTTPS via pacotes BLE.
 final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManagerDelegate {
-    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A21")
-    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A22")
-    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A23")
+    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A31")
+    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A32")
+    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A33")
     private static let permittedHosts: Set<String> = ["example.com", "www.iana.org", "pt.wikipedia.org"]
 
     @Published private(set) var bluetoothStatus = "Verificando"
@@ -136,6 +136,8 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
                 fetchPage("https://example.com", summaryOnly: true)
             case 0x54: // T - TCP nativo (somente example.com:80)
                 runTcpRelayDiagnostic()
+            case 0x56: // V - UDP LAB v0.6, confirmado pelo servidor HTTPS
+                runUdpLabProbe()
             case 0x55: // Início de URL (U)
                 incomingURL.removeAll()
                 receivingURL = true
@@ -160,6 +162,33 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     // Primeira camada de uma ponte TCP: comando vem do Android via BLE;
     // iPhone abre um socket TCP real, lê a resposta do servidor e devolve seus bytes.
     // Nao intercepta nem roteia pacotes IP de outros aplicativos Android.
+    // Resposta de laboratorio: o Redmi gera um datagrama UDP real na VPN,
+    // o iPhone consulta um endereco HTTPS publico, e o Android injeta um
+    // datagrama de resposta local ao socket original. Não é proxy geral.
+    private func runUdpLabProbe() {
+        requestGeneration += 1
+        let generation = requestGeneration
+        lastRequest = "VPN LAB UDP pela ponte Bluetooth"
+        serverStatus = "Verificando internet HTTPS para responder UDP LAB"
+        guard let url = URL(string: "https://example.com/") else {
+            sendResponse("ERRO UDP-LAB | URL de teste invalida")
+            return
+        }
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 12)
+        request.httpMethod = "GET"
+        URLSession.shared.dataTask(with: request) { [weak self] _, response, error in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.requestGeneration else { return }
+                if let error = error {
+                    self.sendResponse("ERRO UDP-LAB | " + error.localizedDescription)
+                    return
+                }
+                let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+                self.sendResponse("BT6-UDP-RELAY | HTTPS example.com | HTTP \(code) | iPhone recebeu pedido da VPN Android e devolveu a resposta via BLE")
+            }
+        }.resume()
+    }
+
     private func runTcpRelayDiagnostic() {
         requestGeneration += 1
         let generation = requestGeneration
