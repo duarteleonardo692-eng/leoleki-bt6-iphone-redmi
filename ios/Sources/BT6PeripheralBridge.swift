@@ -4,9 +4,9 @@ import Combine
 
 /// BT6 v0.3: transmite texto real de páginas HTTPS por pacotes BLE.
 final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManagerDelegate {
-    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A01")
-    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A02")
-    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A03")
+    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A11")
+    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A12")
+    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A13")
     private static let permittedHosts: Set<String> = ["example.com", "www.iana.org", "pt.wikipedia.org"]
 
     @Published private(set) var bluetoothStatus = "Verificando"
