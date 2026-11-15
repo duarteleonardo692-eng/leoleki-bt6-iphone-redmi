@@ -22,6 +22,8 @@ targets:
     info:
       path: ios/Info.plist
       properties:
+        CFBundleShortVersionString: "0.8.0"
+        CFBundleVersion: "80"
         CFBundleDisplayName: "BT6 iPhone v0.8"
         NSBluetoothAlwaysUsageDescription: "O BT6 usa Bluetooth para testar a comunicacao com o Redmi Note 11."
         UIBackgroundModes:
