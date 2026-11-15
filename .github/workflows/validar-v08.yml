@@ -15,6 +15,10 @@ jobs:
         run: |
           swiftc ios/Sources/SocksProtocol.swift tests/ProtocolTests.swift -o /tmp/bt6-protocol-tests
           /tmp/bt6-protocol-tests
+      - name: Testar relay TCP UDP real com streams de socket
+        run: |
+          swiftc ios/Sources/SocksProtocol.swift ios/Sources/L2CAPRelay.swift tests/RelayHarness.swift -o /tmp/bt6-relay-harness
+          python3 tests/test_swift_relay.py /tmp/bt6-relay-harness
       - name: Compilar iPhone
         run: |
           if ! command -v xcodegen >/dev/null; then brew install xcodegen; fi

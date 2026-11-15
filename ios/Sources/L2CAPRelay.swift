@@ -5,7 +5,10 @@ import Network
 // One encrypted L2CAP credit-based channel per SOCKS session. No ATT fragmentation
 // on the data path. Stream and NWConnection queues apply bounded backpressure.
 final class L2CAPRelay: NSObject, StreamDelegate {
-    private let channel: CBL2CAPChannel
+    private var channel: CBL2CAPChannel?
+    private let inputStream: InputStream
+    private let outputStream: OutputStream
+    private let requireWiFi: Bool
     private var input = [UInt8]()
     private var output = Data()
     private var connection: NWConnection?
@@ -21,15 +24,22 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     var onClose: (() -> Void)?
     var onBytes: ((Int) -> Void)?
 
-    init(channel: CBL2CAPChannel) {
+    convenience init(channel: CBL2CAPChannel) {
+        self.init(inputStream: channel.inputStream, outputStream: channel.outputStream)
         self.channel = channel
+    }
+    // Socket streams in CI exercise the same relay; real Bluetooth always requires Wi-Fi.
+    init(inputStream: InputStream, outputStream: OutputStream, requireWiFi: Bool = true) {
+        self.inputStream = inputStream
+        self.outputStream = outputStream
+        self.requireWiFi = requireWiFi
         super.init()
-        channel.inputStream.delegate = self
-        channel.outputStream.delegate = self
-        channel.inputStream.schedule(in: .main, forMode: .common)
-        channel.outputStream.schedule(in: .main, forMode: .common)
-        channel.inputStream.open()
-        channel.outputStream.open()
+        inputStream.delegate = self
+        outputStream.delegate = self
+        inputStream.schedule(in: .main, forMode: .common)
+        outputStream.schedule(in: .main, forMode: .common)
+        inputStream.open()
+        outputStream.open()
         timer = Timer.scheduledTimer(withTimeInterval: 5, repeats: true) { [weak self] _ in
             guard let self = self else { return }
             if Date().timeIntervalSince(self.lastActivity) > (self.phase < 3 ? 20 : 120) { self.close() }
@@ -43,10 +53,10 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         connection?.cancel(); connection = nil
         for c in udpConnections.values { c.cancel() }
         udpConnections.removeAll()
-        channel.inputStream.close(); channel.outputStream.close()
-        channel.inputStream.remove(from: .main, forMode: .common)
-        channel.outputStream.remove(from: .main, forMode: .common)
-        channel.inputStream.delegate = nil; channel.outputStream.delegate = nil
+        inputStream.close(); outputStream.close()
+        inputStream.remove(from: .main, forMode: .common)
+        outputStream.remove(from: .main, forMode: .common)
+        inputStream.delegate = nil; outputStream.delegate = nil
         input.removeAll(); output.removeAll()
         onClose?(); onClose = nil
     }
@@ -56,7 +66,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         if event.contains(.hasBytesAvailable) { readInput() }
         if event.contains(.hasSpaceAvailable) { flush() }
         if event.contains(.endEncountered) {
-            if stream === channel.inputStream && phase == 3 {
+            if stream === inputStream && phase == 3 {
                 inputEnded = true
                 finishInputIfNeeded()
             } else { close() }
@@ -70,9 +80,9 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     }
     private func flush() {
         guard !closed else { return }
-        while !output.isEmpty && channel.outputStream.hasSpaceAvailable {
+        while !output.isEmpty && outputStream.hasSpaceAvailable {
             let n = output.withUnsafeBytes { raw in
-                channel.outputStream.write(raw.bindMemory(to: UInt8.self).baseAddress!, maxLength: min(output.count, 16384))
+                outputStream.write(raw.bindMemory(to: UInt8.self).baseAddress!, maxLength: min(output.count, 16384))
             }
             if n < 0 { close(); return }
             if n == 0 { break }
@@ -85,8 +95,8 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     private func readInput() {
         guard !closed, !sending, phase != 2, !closingAfterDrain else { return }
         var buffer = [UInt8](repeating: 0, count: 16384)
-        while channel.inputStream.hasBytesAvailable && !sending && phase != 2 && !closed {
-            let n = channel.inputStream.read(&buffer, maxLength: buffer.count)
+        while inputStream.hasBytesAvailable && !sending && phase != 2 && !closed {
+            let n = inputStream.read(&buffer, maxLength: buffer.count)
             if n < 0 { close(); return }
             if n == 0 { break }
             lastActivity = Date(); onBytes?(n)
@@ -125,7 +135,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
                     guard address.port != 0 else { reject(4); return }
                     phase = 2
                     let parameters = NWParameters.tcp
-                    parameters.requiredInterfaceType = .wifi
+                    if requireWiFi { parameters.requiredInterfaceType = .wifi }
                     let c = NWConnection(host: NWEndpoint.Host(address.host), port: NWEndpoint.Port(rawValue: address.port)!, using: parameters)
                     connection = c
                     c.stateUpdateHandler = { [weak self] state in
@@ -185,7 +195,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         if let existing = udpConnections[key] { c = existing }
         else {
             guard udpConnections.count < 32 else { close(); return }
-            let p = NWParameters.udp; p.requiredInterfaceType = .wifi
+            let p = NWParameters.udp; if requireWiFi { p.requiredInterfaceType = .wifi }
             c = NWConnection(host: NWEndpoint.Host(target.host), port: NWEndpoint.Port(rawValue: target.port)!, using: p)
             udpConnections[key] = c
             c.stateUpdateHandler = { [weak self, weak c] state in
