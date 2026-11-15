@@ -16,7 +16,7 @@ import java.io.IOException;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * BT6 v0.5 VPN LAB. This service captures ONLY the BT6 app's packets bound
+ * BT6 v0.5.1 VPN LAB — diagnostico de rotas e leitura TUN. This service captures ONLY the BT6 app's packets bound
  * for the RFC 2544 benchmarking range 198.18.0.0/15.
  *
  * No packet is forwarded to the iPhone. This is NOT a working Internet VPN.
@@ -30,6 +30,10 @@ public final class VpnProbeService extends VpnService {
     private static final int NOTIFICATION_ID = 5105;
 
     public static final AtomicInteger capturedPackets = new AtomicInteger();
+    public static final AtomicInteger rawTunReads = new AtomicInteger();
+    public static final AtomicInteger malformedFrames = new AtomicInteger();
+    public static volatile boolean captureReaderStarted = false;
+    public static volatile String readerState = "Leitor TUN nao iniciado";
     public static final AtomicInteger capturedTcpPackets = new AtomicInteger();
     public static final AtomicInteger capturedUdpPackets = new AtomicInteger();
     public static volatile boolean active = false;
@@ -81,6 +85,10 @@ public final class VpnProbeService extends VpnService {
             } else {
                 startForeground(NOTIFICATION_ID, notification);
             }
+            rawTunReads.set(0);
+            malformedFrames.set(0);
+            captureReaderStarted = false;
+            readerState = "Leitor TUN iniciando";
             capturedPackets.set(0);
             capturedTcpPackets.set(0);
             capturedUdpPackets.set(0);
@@ -124,13 +132,22 @@ public final class VpnProbeService extends VpnService {
 
     private void captureLoop(ParcelFileDescriptor file) {
         byte[] buffer = new byte[16384];
+        captureReaderStarted = true;
+        readerState = "Leitor TUN ativo; aguardando pacotes";
         try (FileInputStream input = new FileInputStream(file.getFileDescriptor())) {
             while (running) {
                 int n = input.read(buffer);
                 if (n < 0) break;
-                if (n < 20 || (buffer[0] >> 4 & 0x0f) != 4) continue;
+                rawTunReads.incrementAndGet();
+                if (n < 20 || (buffer[0] >> 4 & 0x0f) != 4) {
+                    malformedFrames.incrementAndGet();
+                    continue;
+                }
                 int ihl = (buffer[0] & 0x0f) * 4;
-                if (ihl < 20 || ihl > n) continue;
+                if (ihl < 20 || ihl > n) {
+                    malformedFrames.incrementAndGet();
+                    continue;
+                }
                 int proto = buffer[9] & 0xff;
                 capturedPackets.incrementAndGet();
                 if (proto == 6) capturedTcpPackets.incrementAndGet();
@@ -138,12 +155,16 @@ public final class VpnProbeService extends VpnService {
                 // Packet data discarded immediately. No PII, URL or payload logs.
             }
         } catch (IOException e) {
-            if (running) diagnostic = "Captura terminada: " + e.getMessage();
+            if (running) {
+                diagnostic = "Captura terminou: " + e.getClass().getSimpleName() + ": " + e.getMessage();
+                readerState = "Erro leitura TUN: " + e.getClass().getSimpleName();
+            }
         } finally {
             if (running) {
                 running = false;
                 active = false;
                 diagnostic = "VPN LAB finalizada; reinicie se precisar";
+                readerState = "Leitor TUN finalizado";
                 stopSelf();
             }
         }
@@ -152,6 +173,8 @@ public final class VpnProbeService extends VpnService {
     private synchronized void stopCapture() {
         running = false;
         active = false;
+        captureReaderStarted = false;
+        readerState = "Leitor TUN desligado";
         if (tun != null) {
             try { tun.close(); } catch (IOException ignored) {}
             tun = null;
