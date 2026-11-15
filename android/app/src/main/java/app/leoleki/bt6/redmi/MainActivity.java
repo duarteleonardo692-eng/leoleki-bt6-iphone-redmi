@@ -9,6 +9,10 @@ import android.net.VpnService;
 import android.net.ConnectivityManager;
 import android.net.Network;
 import android.net.NetworkCapabilities;
+import android.webkit.WebView;
+import android.webkit.WebViewClient;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebSettings;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -45,17 +49,20 @@ import java.util.UUID;
 
 public class MainActivity extends Activity {
     // UUIDs exclusivos da v0.3: evita acoplamento acidental com o iPhone v0.2.
-    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A31");
-    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A32");
-    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A33");
+    private static final UUID SERVICE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A41");
+    private static final UUID REQUEST = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A42");
+    private static final UUID RESPONSE = UUID.fromString("AD08C143-7581-4612-9D63-20D9540C4A43");
     private static final UUID CCCD = UUID.fromString("00002902-0000-1000-8000-00805F9B34FB");
     private static final int REQ_BT_PERMISSIONS = 901;
     private static final int REQ_VPN_LAB = 902;
-    private static final int MAX_BODY_BYTES = 8192;
+    private static final int MAX_BODY_BYTES = 20000;
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final ByteArrayOutputStream responseBuffer = new ByteArrayOutputStream();
     private final ArrayDeque<byte[]> txQueue = new ArrayDeque<>();
-    private TextView statusView, logView, pageView;
+    private TextView statusView, logView, pageView, browserStatus;
+    private WebView browserView;
+    private EditText browserInput;
+    private String browserCurrentURL = "https://example.com/";
     private EditText urlInput;
     private BluetoothLeScanner scanner;
     private BluetoothGatt gatt;
@@ -72,14 +79,49 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 — Redmi v0.6 — VPN ↔ iPhone");
+        title.setText("BT6 Redmi v0.7 — Navegar por Bluetooth");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "BT6 v0.6: testa ida e volta UDP real entre o socket deste app, VPN, Bluetooth, iPhone e VPN. Ainda NAO libera internet para Chrome ou WhatsApp.");
-        statusView = addText(content, "Status: pronto para procurar iPhone v0.6");
+        addText(content, "BT6 v0.7: abra paginas HTTPS dentro deste app usando a internet do iPhone via Bluetooth. Nao liga a internet aos outros aplicativos.");
+        statusView = addText(content, "Status: pronto para procurar iPhone v0.7");
         statusView.setTextSize(18f);
-        addButton(content, "1. Buscar iPhone BT6 v0.6", this::ensurePermissionsAndScan);
+        addButton(content, "1. Buscar iPhone BT6 v0.7", this::ensurePermissionsAndScan);
         addButton(content, "2. Testar Bluetooth (PING)", () -> sendCommand((byte)0x50));
+
+        addText(content, "NAVEGADOR BT6 — sites HTTPS leves:");
+        browserInput = new EditText(this);
+        browserInput.setSingleLine(true);
+        browserInput.setText(browserCurrentURL);
+        browserInput.setTextSize(15f);
+        content.addView(browserInput);
+        addButton(content, "ABRIR SITE PELO BLUETOOTH", () -> requestBrowserPage(browserInput.getText().toString()));
+        browserStatus = addText(content, "Navegador: conecte o iPhone v0.7 e abra um site HTTPS.");
+        browserView = new WebView(this);
+        browserView.getSettings().setJavaScriptEnabled(false);
+        browserView.getSettings().setDomStorageEnabled(false);
+        browserView.getSettings().setAllowFileAccess(false);
+        browserView.getSettings().setAllowContentAccess(false);
+        browserView.getSettings().setBlockNetworkLoads(true);
+        browserView.getSettings().setLoadsImagesAutomatically(false);
+        browserView.setWebViewClient(new WebViewClient() {
+            @Override public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                if (!request.isForMainFrame()) return true;
+                requestBrowserPage(request.getUrl().toString());
+                return true;
+            }
+            @Override public boolean shouldOverrideUrlLoading(WebView view, String url) {
+                requestBrowserPage(url);
+                return true;
+            }
+        });
+        int browserHeight = Math.round(360 * getResources().getDisplayMetrics().density);
+        content.addView(browserView, new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, browserHeight));
+        browserView.loadDataWithBaseURL("https://example.com/",
+                "<h3>BT6 v0.7</h3><p>Os links dos sites serao abertos pelo iPhone.</p>",
+                "text/html", "UTF-8", null);
+        addText(content, "Sem videos, downloads, formularios ou logins nesta versao. Nao digite senhas ou dados pessoais; e um navegador experimental.");
+
         addButton(content, "3. Testar internet (HTTP 200)", () -> sendCommand((byte)0x47));
         addButton(content, "4. Testar transporte TCP real (example.com:80)", () -> sendCommand((byte)0x54));
         addText(content, "Este teste pede que o iPhone abra uma conexao TCP nativa, " +
@@ -114,7 +156,7 @@ public class MainActivity extends Activity {
         logView.setTextSize(13f);
         setContentView(scroll);
         VpnProbeService.setProbeListener(() -> handler.post(() -> {
-            status("VPN capturou pacote UDP real. Solicitando HTTPS do iPhone v0.6 pelo BLE...");
+            status("VPN capturou pacote UDP real. Solicitando HTTPS do iPhone v0.7 pelo BLE...");
             sendCommand((byte)0x56);
         }));
     }
@@ -243,7 +285,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (!isReady()) {
-            status("Primeiro conecte o iPhone BT6 v0.6 pelo Bluetooth.");
+            status("Primeiro conecte o iPhone BT6 v0.7 pelo Bluetooth.");
             return;
         }
         status("Iniciando teste UDP da VPN Android até o iPhone e de volta...");
@@ -381,7 +423,7 @@ public class MainActivity extends Activity {
                 .setScanMode(ScanSettings.SCAN_MODE_LOW_LATENCY).build();
         scanning = true;
         scanner.startScan(filters, settings, callback);
-        status("Buscando iPhone BT6 v0.6. Mantenha o app v0.3 aberto no iPhone.");
+        status("Buscando iPhone BT6 v0.7. Mantenha o app v0.3 aberto no iPhone.");
         handler.postDelayed(() -> {
             if (scanning) {
                 stopScan();
@@ -401,7 +443,7 @@ public class MainActivity extends Activity {
             if (!scanning || result.getDevice() == null) return;
             BluetoothDevice device = result.getDevice();
             stopScan();
-            status("iPhone BT6 v0.6 encontrado. Conectando...");
+            status("iPhone BT6 v0.7 encontrado. Conectando...");
             connect(device);
         }
 
@@ -458,7 +500,7 @@ public class MainActivity extends Activity {
         @Override public void onDescriptorWrite(BluetoothGatt connection, BluetoothGattDescriptor descriptor, int code) {
             if (CCCD.equals(descriptor.getUuid()) && code == BluetoothGatt.GATT_SUCCESS) {
                 notificationReady = true;
-                status("Conectado ao iPhone v0.6. Pronto para transferir.");
+                status("Conectado ao iPhone v0.7. Pronto para transferir.");
             } else {
                 status("Falha nas notificacoes BLE: " + code);
             }
@@ -510,6 +552,75 @@ public class MainActivity extends Activity {
             descriptor.setValue(BluetoothGattDescriptor.ENABLE_NOTIFICATION_VALUE);
             if (!connection.writeDescriptor(descriptor)) status("Falha ao habilitar notificacao");
         }
+    }
+
+    private boolean permittedBrowserHost(String raw) {
+        try {
+            URI url = new URI(raw.trim());
+            String host = url.getHost();
+            if (host == null || !url.getScheme().equalsIgnoreCase("https") ||
+                    url.getUserInfo() != null ||
+                    (url.getPort() != -1 && url.getPort() != 443)) return false;
+            host = host.toLowerCase(Locale.ROOT);
+            if (!host.contains(".") || host.equals("localhost")
+                    || host.endsWith(".local") || host.endsWith(".localhost")
+                    || host.endsWith(".internal") || host.endsWith(".onion")
+                    || host.endsWith(".test") || host.endsWith(".invalid")
+                    || host.contains(":") || host.matches("[0-9.]+")) return false;
+            return raw.trim().getBytes(StandardCharsets.UTF_8).length <= 220;
+        } catch (Exception error) {
+            return false;
+        }
+    }
+
+    private void requestBrowserPage(String rawUrl) {
+        String value = rawUrl == null ? "" : rawUrl.trim();
+        if (!value.contains("://")) value = "https://" + value;
+        if (!permittedBrowserHost(value)) {
+            browserStatus.setText("Use um endereco HTTPS publico com menos de 220 bytes. Nao sao aceitos IPs locais.");
+            return;
+        }
+        byte[] data = value.getBytes(StandardCharsets.UTF_8);
+        synchronized (txQueue) {
+            if (!isReady() || writeActive) {
+                browserStatus.setText("Conecte ao iPhone v0.7 ou aguarde o pedido anterior.");
+                return;
+            }
+            txQueue.addLast(new byte[]{(byte) 0x5B});
+            for (int i = 0; i < data.length; i += 17) {
+                int n = Math.min(17, data.length - i);
+                byte[] packet = new byte[n + 1];
+                packet[0] = (byte) 0x5C;
+                System.arraycopy(data, i, packet, 1, n);
+                txQueue.addLast(packet);
+            }
+            txQueue.addLast(new byte[]{(byte) 0x5D});
+            writeActive = true;
+            sendNextFrameLocked();
+        }
+        browserStatus.setText("Lendo " + value + " por Bluetooth...");
+        requestStartMs = android.os.SystemClock.elapsedRealtime();
+    }
+
+    private void showBrowserResponse(String text) {
+        int first = text.indexOf('\n');
+        int second = first < 0 ? -1 : text.indexOf('\n', first + 1);
+        if (second < 0) {
+            browserStatus.setText("Resposta de navegador incompleta.");
+            return;
+        }
+        String url = text.substring(first + 1, second);
+        String html = text.substring(second + 1);
+        if (!permittedBrowserHost(url)) {
+            browserStatus.setText("Site de retorno bloqueado.");
+            return;
+        }
+        browserCurrentURL = url;
+        browserInput.setText(url);
+        browserView.loadDataWithBaseURL(url, html, "text/html", "UTF-8", null);
+        browserStatus.setText("Pagina recebida pelo Bluetooth: " +
+                html.getBytes(StandardCharsets.UTF_8).length + " bytes (HTML simplificado).");
+        status("NAVEGADOR BLE: HTML recebido e exibido. Clique nos links para navegar.");
     }
 
     private void sendCommand(byte command) {
@@ -636,6 +747,11 @@ public class MainActivity extends Activity {
             } else {
                 String text = new String(data, StandardCharsets.UTF_8);
                 runOnUiThread(() -> pageView.setText(text));
+                if (text.startsWith("BT6-BROWSER-OK\n")) {
+                    runOnUiThread(() -> showBrowserResponse(text));
+                } else if (text.startsWith("BT6-BROWSER-ERROR\n")) {
+                    runOnUiThread(() -> browserStatus.setText(text.substring("BT6-BROWSER-ERROR\n".length())));
+                }
                 if (text.startsWith("BT6-UDP-RELAY")) {
                     boolean accepted = VpnProbeService.deliverProbeReply(text);
                     status(accepted
@@ -652,6 +768,7 @@ public class MainActivity extends Activity {
     }
 
     @Override protected void onDestroy() {
+        if (browserView != null) browserView.destroy();
         VpnProbeService.setProbeListener(null);
         super.onDestroy();
         stopScan();

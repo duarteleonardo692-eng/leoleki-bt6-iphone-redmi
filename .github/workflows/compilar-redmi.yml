@@ -3,7 +3,7 @@ name: BT6 - Compilar Redmi (APK)
 on:
   push:
     branches:
-      - feature/bt6-v06-udp-roundtrip
+      - feature/bt6-v07-navegacao-ble
   workflow_dispatch:
 
 permissions:
@@ -29,10 +29,10 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'app.leoleki.bt6.redmi.v06' android/app/build.gradle
+          grep -q 'app.leoleki.bt6.redmi.v07' android/app/build.gradle
           grep -q 'addAllowedApplication(getPackageName())' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q '198.18.0.0' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'MAX_BODY_BYTES = 8192' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'MAX_BODY_BYTES = 20000' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           grep -q 'DatagramSocket' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           grep -q 'rawTunReads' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
@@ -40,6 +40,8 @@ jobs:
           grep -q 'Thread.sleep(75)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'deliverProbeReply' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'testUdpRoundTrip' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'showBrowserResponse' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'WebView' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
 
       - name: Configurar Java 17
@@ -83,8 +85,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.6-udp-roundtrip.apk
-          ls -lh dist/BT6-Redmi-v0.6-udp-roundtrip.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.7-navegacao-ble.apk
+          ls -lh dist/BT6-Redmi-v0.7-navegacao-ble.apk
 
       - name: Publicar APK de teste no GitHub Releases
         shell: bash
@@ -92,9 +94,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-android-v06-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.6-udp-roundtrip.apk \
+          TAG="bt6-android-v07-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-Redmi-v0.7-navegacao-ble.apk \
             --target "$GITHUB_SHA" \
-            --title "BT6 Redmi v0.6 - VPN UDP ${GITHUB_RUN_NUMBER}" \
-            --notes "BT6 v0.6 experimental: datagrama UDP do próprio app -> VPN -> Bluetooth iPhone v0.6 -> consulta HTTPS -> resposta UDP via TUN. VPN opt-in restrita ao BT6 e a 198.18.0.0/15. Nao libera internet geral, pode substituir outra VPN ativa." \
+            --title "BT6 Redmi v0.7 - VPN UDP ${GITHUB_RUN_NUMBER}" \
+            --notes "BT6 v0.7 experimental: navegador HTTPS com links dentro do proprio BT6, recebido do iPhone por BLE. VPN LAB e opcional e restrita ao BT6. Nao libera internet aos apps Chrome/WhatsApp." \
             --prerelease

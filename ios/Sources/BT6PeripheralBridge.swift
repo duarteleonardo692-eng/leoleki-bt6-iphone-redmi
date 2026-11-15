@@ -5,9 +5,9 @@ import Combine
 
 /// BT6 v0.4: retransmissao TCP de diagnostico e texto HTTPS via pacotes BLE.
 final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManagerDelegate {
-    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A31")
-    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A32")
-    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A33")
+    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A41")
+    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A42")
+    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A43")
     private static let permittedHosts: Set<String> = ["example.com", "www.iana.org", "pt.wikipedia.org"]
 
     @Published private(set) var bluetoothStatus = "Verificando"
@@ -23,6 +23,8 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     private var outgoing = [Data]()
     private var incomingURL = Data()
     private var receivingURL = false
+    private var browsingURL = false
+    private var browsingData = Data()
     private var requestGeneration = 0
     private var tcpConnection: NWConnection?
     private var tcpFinished = false
@@ -80,7 +82,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     }
 
     func peripheralManagerDidStartAdvertising(_ peripheral: CBPeripheralManager, error: Error?) {
-        serverStatus = error == nil ? "Anunciando BT6 v0.3" : "Falha no anuncio: \(error!.localizedDescription)"
+        serverStatus = error == nil ? "Anunciando BT6 v0.7" : "Falha no anuncio: \(error!.localizedDescription)"
     }
 
     func restartAdvertising() {
@@ -120,10 +122,13 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
             }
 
             let opcode = bytes[0]
-            if opcode == 0x44 && (!receivingURL || incomingURL.count + bytes.count - 1 > 220) {
+            if ((opcode == 0x44 && (!receivingURL || incomingURL.count + bytes.count - 1 > 220)) ||
+                (opcode == 0x5C && (!browsingURL || browsingData.count + bytes.count - 1 > 220))) {
                 peripheral.respond(to: request, withResult: .invalidAttributeValueLength)
                 receivingURL = false
                 incomingURL.removeAll()
+                browsingURL = false
+                browsingData.removeAll()
                 continue
             }
             peripheral.respond(to: request, withResult: .success)
@@ -144,6 +149,21 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
                 lastRequest = "Recebendo endereco HTTPS"
             case 0x44: // Dados da URL (D), no maximo 17 bytes
                 if receivingURL { incomingURL.append(bytes.dropFirst()) }
+            case 0x5B: // Iniciar pedido do navegador ("[")
+                browsingData.removeAll()
+                browsingURL = true
+                lastRequest = "Navegador: recebendo endereco"
+            case 0x5C: // Dados do endereco do navegador
+                if browsingURL { browsingData.append(bytes.dropFirst()) }
+            case 0x5D: // Fim do pedido do navegador
+                guard browsingURL else {
+                    sendResponse("ERRO BROWSER | inicio ausente")
+                    break
+                }
+                browsingURL = false
+                let targetURL = String(data: browsingData, encoding: .utf8) ?? ""
+                browsingData.removeAll()
+                fetchBrowserPage(targetURL)
             case 0x45: // Fim da URL (E)
                 guard receivingURL else {
                     sendResponse("ERRO | inicio de URL ausente")
@@ -263,6 +283,92 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
         }
     }
 
+    // Navegacao HTTPS basica dentro do app Android. Nao cria proxy IP de
+    // sistema: solicita HTML de websites publicos, sem JS/imagens externas.
+    private func isAllowedBrowserURL(_ url: URL) -> Bool {
+        guard url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased(),
+              !host.isEmpty,
+              url.user == nil, url.password == nil,
+              url.port == nil || url.port == 443 else { return false }
+        if host == "localhost" || host.hasSuffix(".local") ||
+           host.hasSuffix(".internal") || host.hasSuffix(".localhost") ||
+           host.hasSuffix(".onion") || host.hasSuffix(".test") ||
+           host.hasSuffix(".invalid") || host.contains("%") {
+            return false
+        }
+        // Avoid local IP literals. DNS-resolved private addresses must be
+        // separately blocked in a future generic proxy.
+        if host.contains(":") || host.allSatisfy({ $0.isNumber || $0 == "." }) {
+            return false
+        }
+        return host.contains(".") && host.count <= 253
+    }
+
+    private func browserFailure(_ message: String) {
+        sendResponse("BT6-BROWSER-ERROR\n" + message)
+    }
+
+    private func fetchBrowserPage(_ value: String) {
+        guard value.utf8.count <= 220, let url = URL(string: value),
+              isAllowedBrowserURL(url) else {
+            browserFailure("Apenas sites HTTPS publicos, sem IP local ou porta personalizada.")
+            return
+        }
+        requestGeneration += 1
+        let generation = requestGeneration
+        lastRequest = "BROWSER GET \(url.host ?? "")"
+        serverStatus = "Navegador: lendo HTTPS do iPhone"
+        var request = URLRequest(url: url, cachePolicy: .reloadIgnoringLocalCacheData, timeoutInterval: 25)
+        request.httpMethod = "GET"
+        request.setValue("text/html,text/plain;q=0.9", forHTTPHeaderField: "Accept")
+        request.setValue("BT6-LEOLEKI/0.7", forHTTPHeaderField: "User-Agent")
+        // No cookies or stored credentials; public pages only.
+        URLSession.shared.dataTask(with: request) { [weak self] data, response, error in
+            DispatchQueue.main.async {
+                guard let self = self, generation == self.requestGeneration else { return }
+                if let error = error {
+                    self.browserFailure("Erro HTTPS: " + error.localizedDescription)
+                    return
+                }
+                guard let http = response as? HTTPURLResponse,
+                      let finalURL = http.url,
+                      self.isAllowedBrowserURL(finalURL) else {
+                    self.browserFailure("Redirecionamento nao permitido")
+                    return
+                }
+                let raw = data ?? Data()
+                if raw.count > 220_000 {
+                    self.browserFailure("Pagina grande demais. Tente site com texto mais leve.")
+                    return
+                }
+                let mime = (http.mimeType ?? "").lowercased()
+                guard mime == "text/html" || mime == "text/plain" else {
+                    self.browserFailure("Este navegador experimental aceita apenas HTML ou texto.")
+                    return
+                }
+                var html = String(decoding: raw, as: UTF8.self)
+                // Sanitize active elements. JS also disabled on Android.
+                html = html.replacingOccurrences(
+                    of: "(?is)<(script|style|iframe|object|embed|video|audio|svg|form|noscript)[^>]*>.*?</\\1>",
+                    with: " ", options: .regularExpression)
+                html = html.replacingOccurrences(
+                    of: "(?is)<(img|link|meta|base|source|input|button)[^>]*>",
+                    with: " ", options: .regularExpression)
+                html = html.replacingOccurrences(
+                    of: "(?i)\\s+on[a-z]+\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)",
+                    with: "", options: .regularExpression)
+                let compact = html.replacingOccurrences(of: "\\s{2,}", with: " ",
+                                                        options: .regularExpression)
+                let htmlFragment = String(compact.prefix(10000))
+                let header = "BT6-BROWSER-OK\n" + finalURL.absoluteString + "\n"
+                self.sendResponse(header + "<!doctype html><html><head><meta charset='utf-8'><meta name='viewport' content='width=device-width, initial-scale=1'></head><body>" +
+                                  "<p><small>BT6 via Bluetooth · HTTP \(http.statusCode)</small></p>" +
+                                  htmlFragment + "</body></html>")
+            }
+        }.resume()
+    }
+
     private func fetchPage(_ value: String, summaryOnly: Bool) {
         requestGeneration += 1
         let generation = requestGeneration
@@ -327,7 +433,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
             return
         }
         // Resposta completa (limite 8 KiB); um pacote por notificacao ATT de ate 20 bytes.
-        let payload = Data(message.utf8.prefix(8000))
+        let payload = Data(message.utf8.prefix(14500))
         transferredBytes = payload.count
         outgoing.removeAll()
         outgoing.append(Data([0x01, 0x03]))
