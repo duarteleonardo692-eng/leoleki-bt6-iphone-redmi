@@ -1,12 +1,13 @@
 import Foundation
 import CoreBluetooth
+import Network
 import Combine
 
-/// BT6 v0.3: transmite texto real de páginas HTTPS por pacotes BLE.
+/// BT6 v0.4: retransmissao TCP de diagnostico e texto HTTPS via pacotes BLE.
 final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManagerDelegate {
-    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A11")
-    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A12")
-    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A13")
+    static let serviceUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A21")
+    static let requestUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A22")
+    static let responseUUID = CBUUID(string: "AD08C143-7581-4612-9D63-20D9540C4A23")
     private static let permittedHosts: Set<String> = ["example.com", "www.iana.org", "pt.wikipedia.org"]
 
     @Published private(set) var bluetoothStatus = "Verificando"
@@ -23,6 +24,8 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
     private var incomingURL = Data()
     private var receivingURL = false
     private var requestGeneration = 0
+    private var tcpConnection: NWConnection?
+    private var tcpFinished = false
 
     override init() {
         super.init()
@@ -129,8 +132,10 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
             case 0x50: // PING v0.1
                 lastRequest = "PING"
                 sendResponse("PONG | iPhone recebeu o pedido Bluetooth")
-            case 0x47: // Teste antigo
+            case 0x47: // Teste HTTP de compatibilidade
                 fetchPage("https://example.com", summaryOnly: true)
+            case 0x54: // T - TCP nativo (somente example.com:80)
+                runTcpRelayDiagnostic()
             case 0x55: // Início de URL (U)
                 incomingURL.removeAll()
                 receivingURL = true
@@ -148,6 +153,83 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
                 fetchPage(urlString, summaryOnly: false)
             default:
                 sendResponse("ERRO | comando nao reconhecido")
+            }
+        }
+    }
+
+    // Primeira camada de uma ponte TCP: comando vem do Android via BLE;
+    // iPhone abre um socket TCP real, lê a resposta do servidor e devolve seus bytes.
+    // Nao intercepta nem roteia pacotes IP de outros aplicativos Android.
+    private func runTcpRelayDiagnostic() {
+        requestGeneration += 1
+        let generation = requestGeneration
+        tcpConnection?.cancel()
+        tcpFinished = false
+        let host = "example.com"
+        let port = NWEndpoint.Port(rawValue: 80)!
+        let connection = NWConnection(host: NWEndpoint.Host(host),
+                                      port: port, using: .tcp)
+        tcpConnection = connection
+        lastRequest = "TCP 80 example.com via BLE"
+        serverStatus = "Abrindo conexao TCP real"
+
+        connection.stateUpdateHandler = { [weak self, weak connection] state in
+            guard let self = self, let connection = connection,
+                  generation == self.requestGeneration, !self.tcpFinished else { return }
+            switch state {
+            case .ready:
+                self.serverStatus = "TCP conectado a example.com:80"
+                // Conteudo nao sensivel; deliberadamente HTTP na porta 80 para provar TCP cru.
+                let request = "GET / HTTP/1.1\r\nHost: example.com\r\nAccept: text/plain, text/html\r\nConnection: close\r\n\r\n"
+                connection.send(content: Data(request.utf8),
+                                completion: .contentProcessed { [weak self] error in
+                    guard let self = self else { return }
+                    if let error = error,
+                       generation == self.requestGeneration, !self.tcpFinished {
+                        self.tcpFinished = true
+                        connection.cancel()
+                        self.sendResponse("ERRO TCP ENVIO | \(error.localizedDescription)")
+                    }
+                })
+                self.readTcpResponse(connection, generation: generation, buffer: Data())
+            case .failed(let error):
+                self.tcpFinished = true
+                self.tcpConnection = nil
+                self.sendResponse("ERRO TCP | \(error.localizedDescription)")
+            default:
+                break
+            }
+        }
+        connection.start(queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self, weak connection] in
+            guard let self = self, generation == self.requestGeneration,
+                  !self.tcpFinished else { return }
+            self.tcpFinished = true
+            connection?.cancel()
+            self.tcpConnection = nil
+            self.sendResponse("ERRO TCP | tempo limite 15 s")
+        }
+    }
+
+    private func readTcpResponse(_ connection: NWConnection, generation: Int, buffer: Data) {
+        connection.receive(minimumIncompleteLength: 1, maximumLength: 4096) {
+            [weak self, weak connection] data, _, isComplete, error in
+            guard let self = self, let connection = connection,
+                  generation == self.requestGeneration, !self.tcpFinished else { return }
+            var received = buffer
+            if let data = data { received.append(data) }
+            if isComplete || error != nil || received.count >= 5500 {
+                self.tcpFinished = true
+                self.tcpConnection = nil
+                connection.cancel()
+                if received.isEmpty {
+                    self.sendResponse("ERRO TCP | Nenhum byte recebido: \(error?.localizedDescription ?? "conexao encerrada")")
+                    return
+                }
+                let raw = String(decoding: received.prefix(5500), as: UTF8.self)
+                self.sendResponse("TCP REAL example.com:80 | \(received.count) bytes brutos\n" + raw)
+            } else {
+                self.readTcpResponse(connection, generation: generation, buffer: received)
             }
         }
     }
