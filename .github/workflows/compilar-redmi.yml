@@ -1,6 +1,9 @@
 name: BT6 - Compilar Redmi (APK)
 
 on:
+  push:
+    branches:
+      - feature/bt6-v03-transferencia-real
   workflow_dispatch:
 
 permissions:
@@ -20,10 +23,13 @@ jobs:
           set -euo pipefail
           ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
           test -f "$ZIP"
-          unzip -oq "$ZIP" 'android/*'
+          # Preserva os arquivos v0.3 versionados na raiz do repo.
+          unzip -nq "$ZIP" 'android/*'
           test -f android/settings.gradle
           test -f android/app/build.gradle
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'app.leoleki.bt6.redmi.v03' android/app/build.gradle
+          grep -q 'MAX_BODY_BYTES = 8192' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -66,8 +72,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.1-debug.apk
-          ls -lh dist/BT6-Redmi-v0.1-debug.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.3-debug.apk
+          ls -lh dist/BT6-Redmi-v0.3-debug.apk
 
       - name: Publicar APK de teste no GitHub Releases
         shell: bash
@@ -75,9 +81,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-android-teste-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.1-debug.apk \
+          TAG="bt6-android-v03-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-Redmi-v0.3-debug.apk \
             --target "$GITHUB_SHA" \
-            --title "BT6 Redmi - teste ${GITHUB_RUN_NUMBER}" \
-            --notes "APK experimental de diagnostico BLE. Instalacao manual no Redmi Note 11. Nao substitui o aplicativo Android antigo e nao habilita internet geral." \
+            --title "BT6 Redmi v0.3 - teste ${GITHUB_RUN_NUMBER}" \
+            --notes "APK v0.3 isolado para leitura de conteudo HTTPS transferido via BLE, com checksum. Ainda sem VPN para outros aplicativos." \
             --prerelease
