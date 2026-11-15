@@ -6,6 +6,9 @@ import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Intent;
 import android.net.VpnService;
+import android.net.ConnectivityManager;
+import android.net.Network;
+import android.net.NetworkCapabilities;
 import android.bluetooth.BluetoothAdapter;
 import android.bluetooth.BluetoothDevice;
 import android.bluetooth.BluetoothGatt;
@@ -69,10 +72,10 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 — Redmi v0.5 VPN LAB");
+        title.setText("BT6 — Redmi v0.5.1 — Diagnostico VPN");
         title.setTextSize(24f);
         content.addView(title);
-        addText(content, "BT6 v0.5: conecta ao iPhone BT6 v0.4. Internet real nos outros apps ainda NAO habilitada.");
+        addText(content, "BT6 v0.5.1: coleta diagnostico de rede e VPN isolada. Mantem o Bluetooth com iPhone v0.4; internet de outros apps ainda nao ativada.");
         statusView = addText(content, "Status: pronto para procurar iPhone v0.4");
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.4", this::ensurePermissionsAndScan);
@@ -99,7 +102,8 @@ public class MainActivity extends Activity {
         addText(content, "6. VPN LAB (opcional e isolada): apenas este aplicativo e somente IPs 198.18.0.0/15. Nao encaminha pacotes para o iPhone.");
         addText(content, "ATENCAO: ativar uma VPN de teste pode interromper outra VPN existente no aparelho. Ela nao libera internet ao Chrome ou WhatsApp.");
         addButton(content, "Iniciar VPN LAB (somente teste)", this::confirmAndPrepareVpnLab);
-        addButton(content, "Gerar pacote TCP de teste (nao tera resposta)", this::generateLabPacket);
+        addButton(content, "Testar TCP + UDP e verificar captura", this::generateLabPacket);
+        addButton(content, "Diagnosticar rede Android", this::diagnoseAndroidNetwork);
         addButton(content, "Verificar pacotes VPN LAB", this::showVpnLabStatus);
         addButton(content, "DESLIGAR VPN LAB", this::stopVpnLab);
         pageView = addText(content, "O texto da página aparecerá aqui após a transferência.");
@@ -173,10 +177,48 @@ public class MainActivity extends Activity {
     }
 
     private void showVpnLabStatus() {
-        status(VpnProbeService.diagnostic + " | IPv4: " +
-                VpnProbeService.capturedPackets.get() + " | TCP: " +
-                VpnProbeService.capturedTcpPackets.get() + " | UDP: " +
-                VpnProbeService.capturedUdpPackets.get());
+        status(VpnProbeService.diagnostic + " | VPN ativa: " + VpnProbeService.active
+                + " | Leitor: " + VpnProbeService.readerState
+                + " | Leituras TUN: " + VpnProbeService.rawTunReads.get()
+                + " | IPv4: " + VpnProbeService.capturedPackets.get()
+                + " | TCP: " + VpnProbeService.capturedTcpPackets.get()
+                + " | UDP: " + VpnProbeService.capturedUdpPackets.get()
+                + " | Quadros invalidos: " + VpnProbeService.malformedFrames.get());
+    }
+
+    private void diagnoseAndroidNetwork() {
+        try {
+            ConnectivityManager connectivity =
+                    (ConnectivityManager) getSystemService(CONNECTIVITY_SERVICE);
+            if (connectivity == null) {
+                status("Diagnostico: ConnectivityManager indisponivel");
+                return;
+            }
+            Network active = connectivity.getActiveNetwork();
+            if (active == null) {
+                status("Diagnostico: sem rede padrao ativa no Android. " +
+                        "Essa pode ser a razao dos sockets nao enviarem pacotes mesmo com VPN visivel.");
+                return;
+            }
+            NetworkCapabilities caps = connectivity.getNetworkCapabilities(active);
+            if (caps == null) {
+                status("Diagnostico: rede padrao sem capacidades conhecidas");
+                return;
+            }
+            status("Rede Android: VPN=" +
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_VPN) +
+                    ", dados moveis=" +
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) +
+                    ", Wi-Fi=" +
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) +
+                    ", INTERNET=" +
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) +
+                    ", VALIDADA=" +
+                    caps.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED) +
+                    ". Sem nomes, IPs pessoais ou senhas.");
+        } catch (Exception e) {
+            status("Diagnostico de rede falhou: " + e.getClass().getSimpleName() + ": " + e.getMessage());
+        }
     }
 
     private void generateLabPacket() {
@@ -184,15 +226,36 @@ public class MainActivity extends Activity {
             status("Ative a VPN LAB explicitamente antes deste teste.");
             return;
         }
-        status("Tentando enviar pacote TCP para 198.18.0.1:80 (nao havera resposta)");
+        diagnoseAndroidNetwork();
+        status("Teste TCP e UDP para IP reservado 198.18.0.1. " +
+                "Sem servidor de destino: nao espere uma resposta de internet.");
         new Thread(() -> {
+            String tcpResult;
+            String udpResult;
             try (java.net.Socket socket = new java.net.Socket()) {
-                socket.connect(new java.net.InetSocketAddress(VpnProbeService.DESTINATION, 80), 1200);
-            } catch (Exception ignored) {
-                // Destino de diagnostico sem servidor: timeout e esperado.
+                socket.connect(new java.net.InetSocketAddress(VpnProbeService.DESTINATION, 80), 1500);
+                tcpResult = "conectou (inesperado no endereco de laboratorio)";
+            } catch (Exception e) {
+                tcpResult = e.getClass().getSimpleName() + ": " + e.getMessage();
             }
-            runOnUiThread(this::showVpnLabStatus);
-        }, "BT6-LAB-GENERATOR").start();
+            try (java.net.DatagramSocket socket = new java.net.DatagramSocket()) {
+                byte[] payload = "BT6-LAB-UDP-TESTE".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+                java.net.DatagramPacket packet = new java.net.DatagramPacket(payload, payload.length,
+                        java.net.InetAddress.getByName(VpnProbeService.DESTINATION), 5353);
+                socket.send(packet);
+                udpResult = "send() executado (nao confirma roteamento)";
+            } catch (Exception e) {
+                udpResult = e.getClass().getSimpleName() + ": " + e.getMessage();
+            }
+            try { Thread.sleep(350); } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+            }
+            final String tcp = tcpResult, udp = udpResult;
+            runOnUiThread(() -> {
+                status("Resultado SOCKET TCP: " + tcp + " | UDP: " + udp);
+                showVpnLabStatus();
+            });
+        }, "BT6-LAB-TESTE-DUPLO").start();
     }
 
     private void stopVpnLab() {
