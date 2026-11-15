@@ -8,11 +8,11 @@ android {
 
     defaultConfig {
         // App separado para nao apagar o BT6 v0.1 nem depender do certificado debug anterior.
-        applicationId 'app.leoleki.bt6.redmi.v04'
+        applicationId 'app.leoleki.bt6.redmi.v05'
         minSdk 26
         targetSdk 34
-        versionCode 4
-        versionName '0.4-test'
+        versionCode 5
+        versionName '0.5-vpn-lab'
     }
 
     compileOptions {
