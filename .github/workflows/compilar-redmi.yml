@@ -3,7 +3,7 @@ name: BT6 - Compilar Redmi (APK)
 on:
   push:
     branches:
-      - feature/bt6-v052-vpn-corrigir-permissao-tun
+      - feature/bt6-v06-udp-roundtrip
   workflow_dispatch:
 
 permissions:
@@ -29,7 +29,7 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'app.leoleki.bt6.redmi.v052' android/app/build.gradle
+          grep -q 'app.leoleki.bt6.redmi.v06' android/app/build.gradle
           grep -q 'addAllowedApplication(getPackageName())' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q '198.18.0.0' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'MAX_BODY_BYTES = 8192' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
@@ -38,6 +38,9 @@ jobs:
           grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
           grep -q 'if (n == 0)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'Thread.sleep(75)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
+          grep -q 'deliverProbeReply' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
+          grep -q 'testUdpRoundTrip' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
+          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -80,8 +83,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.5.2-vpn-correcao.apk
-          ls -lh dist/BT6-Redmi-v0.5.2-vpn-correcao.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.6-udp-roundtrip.apk
+          ls -lh dist/BT6-Redmi-v0.6-udp-roundtrip.apk
 
       - name: Publicar APK de teste no GitHub Releases
         shell: bash
@@ -89,9 +92,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-android-v052-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.5.2-vpn-correcao.apk \
+          TAG="bt6-android-v06-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-Redmi-v0.6-udp-roundtrip.apk \
             --target "$GITHUB_SHA" \
-            --title "BT6 Redmi v0.5.2 - correcao ${GITHUB_RUN_NUMBER}" \
-            --notes "BT6 v0.5.2 experimental: corrige permissao INTERNET e leitura vazia da TUN. Compativel com iPhone BT6 v0.4 via BLE. VPN LAB somente opcional e para este app em 198.18.0.0/15; nao fornece internet aos outros aplicativos; pode substituir outra VPN ativa." \
+            --title "BT6 Redmi v0.6 - VPN UDP ${GITHUB_RUN_NUMBER}" \
+            --notes "BT6 v0.6 experimental: datagrama UDP do próprio app -> VPN -> Bluetooth iPhone v0.6 -> consulta HTTPS -> resposta UDP via TUN. VPN opt-in restrita ao BT6 e a 198.18.0.0/15. Nao libera internet geral, pode substituir outra VPN ativa." \
             --prerelease

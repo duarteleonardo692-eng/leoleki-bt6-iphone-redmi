@@ -6,7 +6,7 @@ struct ContentView: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Ponte Bluetooth BT6 v0.4") {
+                Section("Ponte Bluetooth BT6 v0.6") {
                     Text("iPhone XR → Redmi Note 11 sem PC durante a comunicacao")
                         .font(.subheadline)
                     LabeledContent("Bluetooth", value: bridge.bluetoothStatus)
@@ -18,7 +18,7 @@ struct ContentView: View {
                     Text("Ultimo pedido: \(bridge.lastRequest)")
                     Text("Ultima resposta: \(bridge.lastResponse)")
                     LabeledContent("Bytes por BLE", value: "\(bridge.transferredBytes)")
-                    Text("Na v0.4, o Redmi tambem pode solicitar uma conexao TCP real a example.com:80. O iPhone repassa a resposta bruta em pacotes BLE, com checksum.")
+                    Text("Na v0.6, o Redmi tambem pode solicitar uma conexao TCP real a example.com:80. O iPhone repassa a resposta bruta em pacotes BLE, com checksum.")
                         .font(.footnote)
                 }
                 Section("Limites desta versao") {
@@ -27,7 +27,7 @@ struct ContentView: View {
                         .font(.footnote)
                 }
             }
-            .navigationTitle("BT6 iPhone v0.4")
+            .navigationTitle("BT6 iPhone v0.6")
         }
     }
 }

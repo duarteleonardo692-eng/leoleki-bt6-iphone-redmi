@@ -10,7 +10,7 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SYSTEM_EXEMPTED"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <uses-permission android:name="android.permission.INTERNET"/>
-    <application android:label="BT6 Redmi v0.5.2" android:allowBackup="false"
+    <application android:label="BT6 Redmi v0.6" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name="app.leoleki.bt6.redmi.MainActivity" android:exported="true">
             <intent-filter>

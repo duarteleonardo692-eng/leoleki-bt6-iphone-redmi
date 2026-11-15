@@ -13,14 +13,14 @@ targets:
       - path: ios/Sources
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.leoleki.bt6.iphone.v04
+        PRODUCT_BUNDLE_IDENTIFIER: app.leoleki.bt6.iphone.v06
         PRODUCT_NAME: BT6iPhone
         TARGETED_DEVICE_FAMILY: "1"
         SUPPORTS_MACCATALYST: NO
     info:
       path: ios/Info.plist
       properties:
-        CFBundleDisplayName: "BT6 iPhone v0.4"
+        CFBundleDisplayName: "BT6 iPhone v0.6"
         NSBluetoothAlwaysUsageDescription: "O BT6 usa Bluetooth para testar a comunicacao com o Redmi Note 11."
         UIBackgroundModes:
           - bluetooth-peripheral

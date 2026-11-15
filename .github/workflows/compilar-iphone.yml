@@ -3,7 +3,7 @@ name: BT6 - Compilar iPhone (IPA sem assinatura)
 on:
   push:
     branches:
-      - feature/bt6-v04-tcp-relay
+      - feature/bt6-v06-udp-roundtrip
   workflow_dispatch:
 
 permissions:
@@ -24,12 +24,13 @@ jobs:
           ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
           test -f "$ZIP" || { echo "Arquivo BT6 ZIP nao encontrado"; exit 1; }
           # project.yml v0.2 fica no repositorio, com UIBackgroundModes corretos.
-          # -n preserva os fontes v0.4 que agora ficam fora do ZIP.
+          # -n preserva os fontes v0.6 que agora ficam fora do ZIP.
           unzip -nq "$ZIP" 'ios/*'
           test -f project.yml
           test -f ios/Sources/BT6iPhoneApp.swift
-          grep -q "BT6 v0.4" ios/Sources/BT6PeripheralBridge.swift
-          echo "Fontes iOS v0.4 presentes"
+          grep -q 'runUdpLabProbe' ios/Sources/BT6PeripheralBridge.swift
+          grep -q 'AD08C143-7581-4612-9D63-20D9540C4A31' ios/Sources/BT6PeripheralBridge.swift
+          echo "Fontes iOS v0.6 presentes"
 
       - name: Mostrar versao do Xcode
         run: xcodebuild -version
@@ -54,12 +55,13 @@ jobs:
           FOUND=$(/usr/libexec/PlistBuddy -c "Print :UIBackgroundModes:0" ios/Info.plist)
           test "$FOUND" = "bluetooth-peripheral" || { echo "Background BLE ausente"; exit 1; }
 
-      - name: Verificar identidade isolada v0.4
+      - name: Verificar identidade isolada v0.6
         shell: bash
         run: |
           set -euo pipefail
-          grep -q 'app.leoleki.bt6.iphone.v04' project.yml
-          grep -q 'AD08C143-7581-4612-9D63-20D9540C4A21' ios/Sources/BT6PeripheralBridge.swift
+          grep -q 'app.leoleki.bt6.iphone.v06' project.yml
+          grep -q 'runUdpLabProbe' ios/Sources/BT6PeripheralBridge.swift
+          grep -q 'AD08C143-7581-4612-9D63-20D9540C4A31' ios/Sources/BT6PeripheralBridge.swift
 
       - name: Compilar para iPhone sem assinatura
         shell: bash
@@ -85,9 +87,9 @@ jobs:
           test "$MODE" = "bluetooth-peripheral" || { echo "IPA sem background BLE"; exit 1; }
           mkdir -p dist/Payload
           cp -R "$APP" dist/Payload/
-          (cd dist && zip -qr BT6-iPhone-v0.4-unsigned.ipa Payload)
+          (cd dist && zip -qr BT6-iPhone-v0.6-unsigned.ipa Payload)
           rm -rf dist/Payload
-          ls -lh dist/BT6-iPhone-v0.4-unsigned.ipa
+          ls -lh dist/BT6-iPhone-v0.6-unsigned.ipa
 
       - name: Publicar IPA na aba Releases (sem usar armazenamento de artefatos)
         shell: bash
@@ -95,9 +97,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-ios-v04-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-iPhone-v0.4-unsigned.ipa \
+          TAG="bt6-ios-v06-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-iPhone-v0.6-unsigned.ipa \
             --target "$GITHUB_SHA" \
-            --title "BT6 iPhone v0.4 - teste ${GITHUB_RUN_NUMBER}" \
-            --notes "IPA v0.4 experimental com transferencia de texto HTTPS por BLE; instalar usando Sideloadly. Nao oferece internet geral a apps Android." \
+            --title "BT6 iPhone v0.6 - teste ${GITHUB_RUN_NUMBER}" \
+            --notes "IPA v0.6 experimental: resposta BLE ao UDP LAB do Redmi apos consulta HTTPS example.com. Ainda sem internet geral para Chrome/WhatsApp." \
             --prerelease
