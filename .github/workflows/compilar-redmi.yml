@@ -3,7 +3,7 @@ name: BT6 - Compilar Redmi (APK)
 on:
   push:
     branches:
-      - feature/bt6-v051-vpn-diagnostico
+      - feature/bt6-v052-vpn-corrigir-permissao-tun
   workflow_dispatch:
 
 permissions:
@@ -29,12 +29,15 @@ jobs:
           test -f android/app/build.gradle
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           test -f android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'app.leoleki.bt6.redmi.v051' android/app/build.gradle
+          grep -q 'app.leoleki.bt6.redmi.v052' android/app/build.gradle
           grep -q 'addAllowedApplication(getPackageName())' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q '198.18.0.0' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
           grep -q 'MAX_BODY_BYTES = 8192' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           grep -q 'DatagramSocket' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
           grep -q 'rawTunReads' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
+          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
+          grep -q 'if (n == 0)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
+          grep -q 'Thread.sleep(75)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
 
       - name: Configurar Java 17
         uses: actions/setup-java@v4
@@ -77,8 +80,8 @@ jobs:
         shell: bash
         run: |
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk
-          ls -lh dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.5.2-vpn-correcao.apk
+          ls -lh dist/BT6-Redmi-v0.5.2-vpn-correcao.apk
 
       - name: Publicar APK de teste no GitHub Releases
         shell: bash
@@ -86,9 +89,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          TAG="bt6-android-v051-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.5.1-vpn-diagnostico.apk \
+          TAG="bt6-android-v052-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" dist/BT6-Redmi-v0.5.2-vpn-correcao.apk \
             --target "$GITHUB_SHA" \
-            --title "BT6 Redmi v0.5.1 - diagnostico ${GITHUB_RUN_NUMBER}" \
-            --notes "BT6 v0.5.1 experimental: diagnostico do tunel VPN, tentativa TCP+UDP e erros de socket. Requer iPhone BT6 v0.4 para BLE. O VPN LAB e opcional, restrito a este app, nao fornece internet a outros aplicativos, pode substituir outra VPN." \
+            --title "BT6 Redmi v0.5.2 - correcao ${GITHUB_RUN_NUMBER}" \
+            --notes "BT6 v0.5.2 experimental: corrige permissao INTERNET e leitura vazia da TUN. Compativel com iPhone BT6 v0.4 via BLE. VPN LAB somente opcional e para este app em 198.18.0.0/15; nao fornece internet aos outros aplicativos; pode substituir outra VPN ativa." \
             --prerelease
