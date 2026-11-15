@@ -22,7 +22,13 @@ jobs:
       - name: Preparar dependencia e SDK fixos
         run: |
           python3 tools/dependencies.py
-          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+          if command -v sdkmanager >/dev/null; then
+            SDKMANAGER="$(command -v sdkmanager)"
+          else
+            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          fi
+          test -x "$SDKMANAGER"
+          "$SDKMANAGER" 'platforms;android-34' 'build-tools;34.0.0' 
       - name: Testar relay real no computador
         run: |
           mkdir -p tests/build
