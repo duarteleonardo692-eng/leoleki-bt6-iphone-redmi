@@ -6,7 +6,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30"/>
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation"/>
     <uses-permission android:name="android.permission.BLUETOOTH_CONNECT"/>
-    <application android:label="BT6 Redmi v0.3" android:allowBackup="false"
+    <application android:label="BT6 Redmi v0.4" android:allowBackup="false"
         android:theme="@android:style/Theme.Material.Light.NoActionBar">
         <activity android:name="app.leoleki.bt6.redmi.MainActivity" android:exported="true">
             <intent-filter>
