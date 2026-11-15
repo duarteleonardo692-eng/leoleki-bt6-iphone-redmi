@@ -1,102 +1,39 @@
-name: BT6 - Compilar Redmi (APK)
-
+name: BT6 - Compilar Redmi v0.8
 on:
-  push:
-    branches:
-      - feature/bt6-v07-navegacao-ble
   workflow_dispatch:
-
+  push:
+    branches: [feature/bt6-v08-l2cap-internet]
+    paths: ['android/**', 'tests/StreamBridgeTest.java', 'tools/dependencies.py', '.github/workflows/compilar-redmi.yml']
 permissions:
   contents: write
-
 jobs:
-  build-android:
+  android:
     runs-on: ubuntu-24.04
-    timeout-minutes: 25
+    timeout-minutes: 20
     steps:
-      - name: Baixar repositorio
-        uses: actions/checkout@v4
-
-      - name: Extrair projeto Android do pacote original
-        shell: bash
-        run: |
-          set -euo pipefail
-          ZIP="BT6_Prototipo_v0_1_codigo_e_compilacao_nuvem.zip"
-          test -f "$ZIP"
-          # Preserva os arquivos v0.5 versionados na raiz do repo.
-          unzip -nq "$ZIP" 'android/*'
-          test -f android/settings.gradle
-          test -f android/app/build.gradle
-          test -f android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          test -f android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'app.leoleki.bt6.redmi.v07' android/app/build.gradle
-          grep -q 'addAllowedApplication(getPackageName())' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q '198.18.0.0' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'MAX_BODY_BYTES = 20000' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          grep -q 'DatagramSocket' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          grep -q 'rawTunReads' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
-          grep -q 'if (n == 0)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'Thread.sleep(75)' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'deliverProbeReply' android/app/src/main/java/app/leoleki/bt6/redmi/VpnProbeService.java
-          grep -q 'testUdpRoundTrip' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          grep -q 'showBrowserResponse' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          grep -q 'WebView' android/app/src/main/java/app/leoleki/bt6/redmi/MainActivity.java
-          grep -q 'android.permission.INTERNET' android/app/src/main/AndroidManifest.xml
-
-      - name: Configurar Java 17
-        uses: actions/setup-java@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
-
-      - name: Preparar Android SDK sem pacote obsoleto
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "ANDROID_HOME=${ANDROID_HOME:-}"
-          test -d "${ANDROID_HOME:-/not-installed}" || { echo "Android SDK nao encontrado no runner"; exit 1; }
-          if command -v sdkmanager >/dev/null 2>&1; then
-            SDKMANAGER="$(command -v sdkmanager)"
-          elif test -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"; then
-            SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
-          else
-            SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | sort -V | tail -n 1)"
-          fi
-          test -n "$SDKMANAGER" && test -x "$SDKMANAGER" || { echo "sdkmanager nao encontrado"; exit 1; }
-          echo "sdkmanager: $SDKMANAGER"
-          "$SDKMANAGER" --version
-          yes | "$SDKMANAGER" --licenses >/dev/null || true
-          "$SDKMANAGER" "platforms;android-35" "build-tools;35.0.0"
-
-      - name: Disponibilizar Gradle 8.9
-        uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
-
-      - name: Compilar APK de diagnostico
-        shell: bash
+          gradle-version: '8.7'
+      - name: Preparar dependencia e SDK fixos
         run: |
-          set -euo pipefail
-          gradle -p android :app:assembleDebug --no-daemon --stacktrace
-          test -f android/app/build/outputs/apk/debug/app-debug.apk
-
-      - name: Preparar APK para download
-        shell: bash
+          python3 tools/dependencies.py
+          sdkmanager 'platforms;android-34' 'build-tools;34.0.0'
+      - name: Testar relay real no computador
         run: |
-          mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.7-navegacao-ble.apk
-          ls -lh dist/BT6-Redmi-v0.7-navegacao-ble.apk
-
-      - name: Publicar APK de teste no GitHub Releases
-        shell: bash
+          mkdir -p tests/build
+          javac -d tests/build android/app/src/main/java/app/leoleki/bt6/redmi/StreamBridge.java tests/StreamBridgeTest.java
+          java -cp tests/build app.leoleki.bt6.redmi.StreamBridgeTest
+      - name: Compilar e analisar APK
+        run: gradle -p android :app:assembleDebug :app:lintDebug --no-daemon --console=plain
+      - name: Disponibilizar APK experimental
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          set -euo pipefail
-          TAG="bt6-android-v07-${GITHUB_RUN_NUMBER}"
-          gh release create "$TAG" dist/BT6-Redmi-v0.7-navegacao-ble.apk \
-            --target "$GITHUB_SHA" \
-            --title "BT6 Redmi v0.7 - VPN UDP ${GITHUB_RUN_NUMBER}" \
-            --notes "BT6 v0.7 experimental: navegador HTTPS com links dentro do proprio BT6, recebido do iPhone por BLE. VPN LAB e opcional e restrita ao BT6. Nao libera internet aos apps Chrome/WhatsApp." \
-            --prerelease
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk dist/BT6-Redmi-v0.8-l2cap-internet.apk
+          gh release create "bt6-android-v08-build-${GITHUB_RUN_NUMBER}" dist/BT6-Redmi-v0.8-l2cap-internet.apk --target "$GITHUB_SHA" --title "BT6 Redmi v0.8 experimental" --prerelease --notes "Testado internamente. VPN, emparelhamento e desempenho ainda precisam ser verificados nos aparelhos. Use com iPhone v0.8."

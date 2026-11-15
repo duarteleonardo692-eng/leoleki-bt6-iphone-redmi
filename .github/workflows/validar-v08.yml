@@ -3,6 +3,7 @@ on:
   push:
     branches: [feature/bt6-v08-l2cap-internet]
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: write
 jobs:
