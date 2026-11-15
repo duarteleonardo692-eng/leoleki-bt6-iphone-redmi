@@ -26,6 +26,13 @@ public final class InternetService extends VpnService {
     private boolean starting;
     private int generation;
     private Thread startup;
+    public static String snapshot() {
+        InternetService service = instance;
+        StreamBridge b = service == null ? null : service.bridge;
+        return status + (b == null ? "" : " | Ponte: enviados " + b.sent.get() + " B, recebidos " + b.received.get() + " B");
+    }
+    private static volatile InternetService instance;
+    @Override public void onCreate() { super.onCreate(); instance = this; }
 
     @Override public int onStartCommand(Intent intent, int flags, int id) {
         if (intent == null || STOP.equals(intent.getAction())) { status = "Internet Bluetooth desligada"; shutdown(); stopSelf(); return START_NOT_STICKY; }
@@ -146,5 +153,5 @@ public final class InternetService extends VpnService {
         stopForeground(STOP_FOREGROUND_REMOVE);
     }
     @Override public void onRevoke() { status="VPN revogada"; shutdown(); stopSelf(); }
-    @Override public void onDestroy() { shutdown(); timers.shutdownNow(); super.onDestroy(); }
+    @Override public void onDestroy() { if (instance == this) instance = null; shutdown(); timers.shutdownNow(); super.onDestroy(); }
 }

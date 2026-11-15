@@ -92,7 +92,7 @@ public class MainActivity extends Activity {
         addButton(content, "1. Buscar iPhone BT6 v0.8", this::ensurePermissionsAndScan);
         addText(content, "INTERNET PARA OUTROS APPS — experimental: use iPhone v0.8 no Wi-Fi, com o BT6 aberto. A VPN substitui outra VPN em uso. Velocidade e estabilidade ainda dependem do teste fisico.");
         addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
-        addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.status));
+        addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.snapshot()));
         addButton(content, "DESLIGAR INTERNET", () -> startService(new Intent(this, InternetService.class).setAction(InternetService.STOP)));
         LinearLayout diagnostics = new LinearLayout(this);
         diagnostics.setOrientation(LinearLayout.VERTICAL);

@@ -228,9 +228,11 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     }
     private func receiveUDP(_ c: NWConnection, _ target: SocksProtocol.Address) {
         guard !closed else { return }
-        c.receiveMessage { [weak self, weak c] data, _, _, error in
+        c.receiveMessage { [weak self, weak c] data, context, _, error in
             guard let self = self, let c = c, !self.closed else { return }
-            if let data = data, let frame = try? SocksProtocol.udpFrame(address: target.wire, payload: data) {
+            // Network.framework represents a valid zero-length datagram with nil data.
+            if error == nil, (data != nil || context != nil),
+               let frame = try? SocksProtocol.udpFrame(address: target.wire, payload: data ?? Data()) {
                 self.enqueue(frame)
             }
             if error == nil { self.receiveUDP(c, target) }
