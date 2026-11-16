@@ -55,13 +55,13 @@ public class StreamBridgeTest {
             check(relay.received.get()==8L*1048576,"download count");
             List<Socket> held=new ArrayList<>();
             try {
-                for (int i=0;i<12;i++) {
+                for (int i=0;i<StreamBridge.MAX_CHANNELS;i++) {
                     Socket active=new Socket("127.0.0.1",relay.port());held.add(active);active.setSoTimeout(3000);
                     active.getOutputStream().write(41);check(active.getInputStream().read()==41,"occupy channel");
                 }
                 Socket queued=new Socket("127.0.0.1",relay.port());held.add(queued);queued.setSoTimeout(250);
                 queued.getOutputStream().write(42);
-                try { queued.getInputStream().read();throw new AssertionError("13th channel must queue"); }
+                try { queued.getInputStream().read();throw new AssertionError("extra channel must queue"); }
                 catch(SocketTimeoutException expected) { }
                 held.get(0).close();queued.setSoTimeout(4000);
                 check(queued.getInputStream().read()==42,"queued channel resumes when capacity released");
@@ -75,6 +75,6 @@ public class StreamBridgeTest {
         try (StreamBridge broken=new StreamBridge(() -> {throw new IOException("offline");}); Socket c=new Socket("127.0.0.1",broken.port())) {
             c.setSoTimeout(3000);c.getOutputStream().write(1);check(c.getInputStream().read()==-1,"failed link releases client");
         }
-        System.out.println("PASS: bounded twelve-channel admission and queued resume; serialized secure channel opens; eight concurrent 1MiB random full duplex round trips, byte counters, close, double close, failed link");
+        System.out.println("PASS: bounded eight-channel admission and queued resume; serialized secure channel opens; eight concurrent 1MiB random full duplex round trips, byte counters, close, double close, failed link");
     }
 }

@@ -86,7 +86,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8.9 — Internet do iPhone");
+        title.setText("BT6 v0.8.10 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -101,7 +101,10 @@ public class MainActivity extends Activity {
         internetButton = addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
         internetButton.setEnabled(false);
         addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.snapshot()));
-        addButton(content, "DESLIGAR INTERNET", () -> startService(new Intent(this, InternetService.class).setAction(InternetService.STOP)));
+        addButton(content, "DESLIGAR INTERNET", () -> {
+            if (gatt != null) try { gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED); } catch (RuntimeException ignored) { }
+            startService(new Intent(this, InternetService.class).setAction(InternetService.STOP));
+        });
         LinearLayout diagnostics = new LinearLayout(this);
         diagnostics.setOrientation(LinearLayout.VERTICAL);
         diagnostics.setVisibility(android.view.View.GONE);
@@ -493,6 +496,10 @@ public class MainActivity extends Activity {
     }
 
     private final BluetoothGattCallback gattCallback = new BluetoothGattCallback() {
+        @Override public void onPhyUpdate(BluetoothGatt connection, int txPhy, int rxPhy, int status) {
+            if (connection != gatt) return;
+            android.util.Log.i("BT6Internet", "Radio PHY status=" + status + " tx=" + txPhy + " rx=" + rxPhy);
+        }
         @Override public void onConnectionStateChange(BluetoothGatt connection, int code, int newState) {
             if (connection != gatt) return;
             if (code != BluetoothGatt.GATT_SUCCESS) {
@@ -624,6 +631,14 @@ public class MainActivity extends Activity {
         if (result == BluetoothGatt.GATT_SUCCESS && value != null && value.length == 3 && value[0] == 10) {
             internetPsm = (value[1] & 255) | ((value[2] & 255) << 8);
             runOnUiThread(() -> internetButton.setEnabled(true));
+            try {
+                boolean requested = gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_HIGH);
+                android.util.Log.i("BT6Internet", "Prioridade de transferencia solicitada=" + requested);
+                if (Build.VERSION.SDK_INT >= 26) gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK,
+                    BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED);
+            } catch (RuntimeException optional) {
+                android.util.Log.i("BT6Internet", "Ajuste opcional de radio indisponivel: " + optional.getClass().getSimpleName());
+            }
             status("iPhone pronto; vinculo criptografado confirmado. Toque em ATIVAR INTERNET.");
         } else {
             internetPsm = 0;

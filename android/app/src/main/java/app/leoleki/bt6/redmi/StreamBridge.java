@@ -20,7 +20,8 @@ public final class StreamBridge implements AutoCloseable {
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
     private final ExecutorService workers = Executors.newFixedThreadPool(64);
     private final Semaphore slots = new Semaphore(32);
-    private final Semaphore channels = new Semaphore(12, true);
+    static final int MAX_CHANNELS = 8; // Reserve margin while iOS asynchronously retires old channels.
+    private final Semaphore channels = new Semaphore(MAX_CHANNELS, true);
     private final ServerSocket server;
     private volatile boolean closed;
     public final AtomicLong sent = new AtomicLong(), received = new AtomicLong();

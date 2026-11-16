@@ -11,8 +11,8 @@ android {
         applicationId 'app.leoleki.bt6.redmi.v08'
         minSdk 29
         targetSdk 34
-        versionCode 89
-        versionName '0.8.9-fila-canais'
+        versionCode 90
+        versionName '0.8.10-radio-prioritario'
     }
 
     compileOptions {
