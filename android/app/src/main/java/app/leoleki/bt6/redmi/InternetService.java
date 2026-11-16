@@ -59,7 +59,7 @@ public final class InternetService extends VpnService {
             try {
                 BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
                 BluetoothDevice device = adapter.getRemoteDevice(address);
-                localBridge = new StreamBridge(() -> openLink(device, psm));
+                localBridge = new StreamBridge(() -> openLink(device, psm), message -> android.util.Log.w("BT6Internet", message));
                 synchronized (this) {
                     if (stopping || generation != attempt) { localBridge.close(); return; }
                     bridge = localBridge;
@@ -70,21 +70,23 @@ public final class InternetService extends VpnService {
                     if (stopping || generation != attempt) return;
                     // Exclude our loopback relay to prevent VPN recursion. Both families
                     // are routed so IPv6 cannot silently escape over mobile data.
-                    tun = new Builder().setSession("BT6 via iPhone Wi-Fi").setMtu(1280)
+                    Builder vpn = new Builder().setSession("BT6 via iPhone Wi-Fi").setMtu(1280)
                         .addAddress("10.88.0.2",32).addAddress("fd88::2",128)
                         .addRoute("0.0.0.0",0).addRoute("::",0)
-                        .addDnsServer("198.18.0.2").addDisallowedApplication(getPackageName())
-                        .setBlocking(true).establish();
+                        .addDnsServer("198.18.0.2").setBlocking(true);
+                    if (intent.getBooleanExtra("chromeOnly", false)) vpn.addAllowedApplication("com.android.chrome");
+                    else vpn.addDisallowedApplication(getPackageName());
+                    tun = vpn.establish();
                     if (tun == null) throw new IOException("Permissao VPN revogada");
                     File config = new File(getFilesDir(), "internet.yml");
                     String yaml = "tunnel:\n  mtu: 1280\n  ipv4: 10.88.0.2\n  ipv6: 'fd88::2'\n" +
                         "socks5:\n  address: 127.0.0.1\n  port: " + bridge.port() + "\n  udp: tcp\n" +
                         "mapdns:\n  address: 198.18.0.2\n  port: 53\n  network: 100.64.0.0\n  netmask: 255.192.0.0\n  cache-size: 2048\n" +
-                        "misc:\n  max-session-count: 4\n  connect-timeout: 20000\n  tcp-read-write-timeout: 120000\n  udp-read-write-timeout: 60000\n  log-level: error\n";
+                        "misc:\n  max-session-count: 32\n  connect-timeout: 20000\n  tcp-read-write-timeout: 120000\n  udp-read-write-timeout: 60000\n  log-level: error\n";
                     try (FileOutputStream out = new FileOutputStream(config)) { out.write(yaml.getBytes(StandardCharsets.UTF_8)); }
                     if (!TProxyService.TProxyStartService(config.getAbsolutePath(), tun.getFd())) throw new IOException("Falha no motor VPN");
                     starting = false;
-                    status = "VPN iniciada; valide a navegacao no Chrome. Mantenha o BT6 aberto no iPhone.";
+                    status = (intent.getBooleanExtra("chromeOnly", false) ? "Teste somente Chrome. " : "") + "VPN iniciada; valide a navegacao no Chrome. Mantenha o BT6 aberto no iPhone.";
                 }
                 timers.scheduleWithFixedDelay(() -> {
                     if (!stopping && !TProxyService.TProxyIsRunning()) {

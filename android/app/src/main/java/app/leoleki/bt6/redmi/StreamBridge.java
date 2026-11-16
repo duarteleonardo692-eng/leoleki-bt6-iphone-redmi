@@ -15,6 +15,7 @@ public final class StreamBridge implements AutoCloseable {
     }
     public interface Factory { Link open() throws IOException; }
     private final Factory factory;
+    private final java.util.function.Consumer<String> diagnostics;
     private final Semaphore connecting = new Semaphore(1, true);
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
     private final ExecutorService workers = Executors.newFixedThreadPool(24);
@@ -25,7 +26,10 @@ public final class StreamBridge implements AutoCloseable {
     private Thread acceptor;
 
     public StreamBridge(Factory factory) throws IOException {
-        this.factory = factory;
+        this(factory, message -> {});
+    }
+    public StreamBridge(Factory factory, java.util.function.Consumer<String> diagnostics) throws IOException {
+        this.factory = factory; this.diagnostics = diagnostics;
         server = new ServerSocket(0, 12, InetAddress.getByName("127.0.0.1"));
         acceptor = new Thread(this::accept, "BT6-accept");
         acceptor.setDaemon(true); acceptor.start();
@@ -65,13 +69,13 @@ public final class StreamBridge implements AutoCloseable {
                     if (ended) { opened.close(); return; }
                     link = opened;
                 }
-                workers.execute(() -> pump(linkInput(), clientOutput(), received));
-                pump(client.getInputStream(), opened.output(), sent);
-            } catch (Exception e) { close(); }
+                workers.execute(() -> pump(linkInput(), clientOutput(), received, "Bluetooth para Android"));
+                pump(client.getInputStream(), opened.output(), sent, "Android para Bluetooth");
+            } catch (Exception e) { diagnostics.accept("Sessao: " + e.getClass().getSimpleName() + " " + e.getMessage()); close(); }
         }
         InputStream linkInput() { try { return link.input(); } catch (IOException e) { close(); return new ByteArrayInputStream(new byte[0]); } }
         OutputStream clientOutput() { try { return client.getOutputStream(); } catch (IOException e) { close(); return new ByteArrayOutputStream(); } }
-        void pump(InputStream in, OutputStream out, AtomicLong counter) {
+        void pump(InputStream in, OutputStream out, AtomicLong counter, String direction) {
             byte[] buffer = new byte[16384];
             try {
                 int n;
@@ -80,7 +84,7 @@ public final class StreamBridge implements AutoCloseable {
                     out.write(buffer, 0, n);
                     counter.addAndGet(n);
                 }
-            } catch (IOException ignored) { }
+            } catch (IOException error) { diagnostics.accept(direction + ": " + error.getClass().getSimpleName() + " " + error.getMessage()); }
             finally { close(); }
         }
         @Override public synchronized void close() {

@@ -65,6 +65,7 @@ public class MainActivity extends Activity {
     private final ArrayDeque<byte[]> txQueue = new ArrayDeque<>();
     private TextView statusView, logView, pageView, browserStatus;
     private Button internetButton;
+    private android.widget.CheckBox chromeOnly;
     private WebView browserView;
     private EditText browserInput;
     private String browserCurrentURL = "https://example.com/";
@@ -85,7 +86,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8.7 — Internet do iPhone");
+        title.setText("BT6 v0.8.8 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -93,6 +94,10 @@ public class MainActivity extends Activity {
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.8", this::ensurePermissionsAndScan);
         addText(content, "INTERNET PARA OUTROS APPS — experimental: use iPhone v0.8 no Wi-Fi, com o BT6 aberto. A VPN substitui outra VPN em uso. Velocidade e estabilidade ainda dependem do teste fisico.");
+        chromeOnly = new android.widget.CheckBox(this);
+        chromeOnly.setText("Diagnostico: encaminhar somente o Chrome");
+        chromeOnly.setChecked(true);
+        content.addView(chromeOnly);
         internetButton = addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
         internetButton.setEnabled(false);
         addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.snapshot()));
@@ -631,7 +636,7 @@ public class MainActivity extends Activity {
             status("Conecte ao BT6 iPhone v0.8 primeiro (Android 10 ou superior)."); return;
         }
         new AlertDialog.Builder(this).setTitle("Internet pelo iPhone")
-            .setMessage("A VPN vai enviar o trafego dos outros apps pelo Bluetooth e Wi-Fi do iPhone. Mantenha o BT6 aberto no iPhone. Isso substitui outra VPN ativa. Iniciar teste?")
+            .setMessage((chromeOnly.isChecked() ? "Neste teste, somente o Chrome usara a ponte. " : "A VPN vai enviar o trafego dos outros apps pela ponte. ") + "Mantenha o BT6 aberto no iPhone no Wi-Fi. Isso substitui outra VPN ativa. Iniciar teste?")
             .setNegativeButton("Cancelar", null).setPositiveButton("Iniciar", (d,w) -> {
                 Intent permission = VpnService.prepare(this);
                 if (permission == null) startInternet(); else startActivityForResult(permission, REQ_INTERNET);
@@ -640,7 +645,7 @@ public class MainActivity extends Activity {
     private void startInternet() {
         if (gatt == null || internetPsm == 0) { status("Conecte novamente ao iPhone"); return; }
         Intent intent = new Intent(this, InternetService.class).setAction(InternetService.START)
-            .putExtra("device", gatt.getDevice().getAddress()).putExtra("psm", internetPsm);
+            .putExtra("device", gatt.getDevice().getAddress()).putExtra("psm", internetPsm).putExtra("chromeOnly", chromeOnly.isChecked());
         if (Build.VERSION.SDK_INT >= 26) startForegroundService(intent); else startService(intent);
         status("Verificando internet do iPhone. Use VER ESTADO DA INTERNET para acompanhar.");
     }
