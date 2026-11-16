@@ -3,7 +3,7 @@ on:
   workflow_dispatch:
   push:
     branches: [feature/bt6-v08-l2cap-internet]
-    paths: ['android/**', 'tests/StreamBridgeTest.java', 'tools/dependencies.py', '.github/workflows/compilar-redmi.yml']
+    paths: ['android/**', 'tests/*.java', 'tools/dependencies.py', '.github/workflows/compilar-redmi.yml']
 permissions:
   contents: write
 jobs:
@@ -32,8 +32,9 @@ jobs:
       - name: Testar relay real no computador
         run: |
           mkdir -p tests/build
-          javac -d tests/build android/app/src/main/java/app/leoleki/bt6/redmi/StreamBridge.java tests/StreamBridgeTest.java
+          javac -d tests/build android/app/src/main/java/app/leoleki/bt6/redmi/StreamBridge.java android/app/src/main/java/app/leoleki/bt6/redmi/FramedInputStream.java tests/StreamBridgeTest.java tests/FramedInputStreamTest.java
           java -cp tests/build app.leoleki.bt6.redmi.StreamBridgeTest
+          java -cp tests/build app.leoleki.bt6.redmi.FramedInputStreamTest
       - name: Compilar e analisar APK
         run: gradle -p android :app:assembleDebug :app:lintDebug --no-daemon --console=plain
       - name: Disponibilizar APK experimental

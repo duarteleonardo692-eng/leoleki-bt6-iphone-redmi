@@ -18,6 +18,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     private var receiving = false
     private var closed = false
     private var closingAfterDrain = false
+    private var endQueued = false
     private var inputEnded = false
     private var lastActivity = Date()
     private func trace(_ text: String) { if ProcessInfo.processInfo.environment["BT6_TRACE"] == "1" { FileHandle.standardError.write(Data((text + "\n").utf8)) } }
@@ -82,12 +83,17 @@ final class L2CAPRelay: NSObject, StreamDelegate {
     }
 
     private func enqueue(_ bytes: Data) {
-        guard !closed else { return }
-        guard output.count + bytes.count <= 131072 else { close(); return }
-        output.append(bytes); flush()
+        guard !closed, !endQueued else { return }
+        let framed = ResponseFrames.encode(bytes)
+        guard output.count + framed.count <= 131072 else { close(); return }
+        output.append(framed); flush()
     }
     private func flush() {
         guard !closed else { return }
+        if closingAfterDrain && !endQueued {
+            output.append(ResponseFrames.end)
+            endQueued = true
+        }
         while !output.isEmpty && outputStream.hasSpaceAvailable {
             let n = output.withUnsafeBytes { raw in
                 outputStream.write(raw.bindMemory(to: UInt8.self).baseAddress!, maxLength: min(output.count, 16384))
@@ -96,7 +102,9 @@ final class L2CAPRelay: NSObject, StreamDelegate {
             if n == 0 { break }
             output.removeFirst(n); lastActivity = Date(); onBytes?(n)
         }
-        if output.isEmpty && closingAfterDrain { close(); return }
+        // Android consumes all DATA before EOF, then closes the channel as ACK.
+        // Closing the CBL2CAP OutputStream here can discard queued radio bytes.
+        if closingAfterDrain { return }
         receiveTCP()
     }
 
@@ -200,6 +208,7 @@ final class L2CAPRelay: NSObject, StreamDelegate {
         connection?.receive(minimumIncompleteLength: 1, maximumLength: 16384) { [weak self] data, _, complete, error in
             guard let self = self, !self.closed else { return }
             self.receiving = false
+            RelayDiagnostics.record("network receive bytes=\(data?.count ?? 0) complete=\(complete) error=\(String(describing: error))")
             if complete || error != nil { self.closingAfterDrain = true }
             if let data = data { self.enqueue(data) } else { self.flush() }
             self.receiveTCP()

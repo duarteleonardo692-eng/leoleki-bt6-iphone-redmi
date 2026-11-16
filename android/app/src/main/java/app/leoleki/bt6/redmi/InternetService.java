@@ -124,7 +124,8 @@ public final class InternetService extends VpnService {
             socket.connect(); deadline.cancel(false);
             android.util.Log.i("BT6Internet", "Canal criptografado conectado; vinculo=" + device.getBondState());
             return new StreamBridge.Link() {
-                public InputStream input() throws IOException { return socket.getInputStream(); }
+                private final InputStream framed = new FramedInputStream(socket.getInputStream());
+                public InputStream input() { return framed; }
                 public OutputStream output() throws IOException { return socket.getOutputStream(); }
                 public void close() throws IOException { sockets.remove(socket); socket.close(); }
             };

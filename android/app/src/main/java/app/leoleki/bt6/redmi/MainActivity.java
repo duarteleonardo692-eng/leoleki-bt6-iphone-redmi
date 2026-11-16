@@ -85,7 +85,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8.6 — Internet do iPhone");
+        title.setText("BT6 v0.8.7 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -616,7 +616,7 @@ public class MainActivity extends Activity {
         if (!PSM.equals(ch.getUuid())) return;
         setupActive = false;
         android.util.Log.i("BT6Internet", "Endpoint GATT lido; status=" + result + " bytes=" + (value == null ? 0 : value.length));
-        if (result == BluetoothGatt.GATT_SUCCESS && value != null && value.length == 3 && value[0] == 9) {
+        if (result == BluetoothGatt.GATT_SUCCESS && value != null && value.length == 3 && value[0] == 10) {
             internetPsm = (value[1] & 255) | ((value[2] & 255) << 8);
             runOnUiThread(() -> internetButton.setEnabled(true));
             status("iPhone pronto; vinculo criptografado confirmado. Toque em ATIVAR INTERNET.");

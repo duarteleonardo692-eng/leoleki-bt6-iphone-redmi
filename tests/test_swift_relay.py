@@ -23,6 +23,22 @@ def read(sock, size):
         data.extend(part)
     return bytes(data)
 
+class ResponseStream:
+    def __init__(self,sock): self.sock=sock;self.pending=bytearray();self.ended=False
+    def sendall(self,data): self.sock.sendall(data)
+    def settimeout(self,value): self.sock.settimeout(value)
+    def shutdown(self,how): self.sock.shutdown(how)
+    def recv(self,size):
+        if self.ended: return b''
+        if not self.pending:
+            kind,length=struct.unpack('!BH',read(self.sock,3))
+            if kind==0xD2 and length==0: self.ended=True;return b''
+            if kind!=0xD1 or not 1<=length<=16384: raise ValueError('invalid frame')
+            self.pending.extend(read(self.sock,length))
+        data=bytes(self.pending[:size]);del self.pending[:size];return data
+    def __enter__(self): return self
+    def __exit__(self,*args): self.sock.close()
+
 @contextlib.contextmanager
 def channel():
     with socket.socket() as listener:
@@ -32,7 +48,7 @@ def channel():
             sock, _ = listener.accept()
             with sock:
                 sock.settimeout(10)
-                yield sock
+                yield ResponseStream(sock)
         finally:
             process.terminate()
             process.wait(timeout=5)
@@ -69,6 +85,9 @@ class RelayTests(unittest.TestCase):
                     c.sendall(payload)
                     actual=read(c,len(payload))
                     self.assertEqual(hashlib.sha256(actual).digest(),hashlib.sha256(payload).digest())
+                    self.assertEqual(c.recv(1),b'')
+                    c.sock.settimeout(0.2)
+                    with self.assertRaises(TimeoutError): c.sock.recv(1)  # Physical channel awaits recipient ACK.
                 task.result(timeout=10)
 
     def test_udp_frames(self):
@@ -99,8 +118,8 @@ class RelayTests(unittest.TestCase):
             listener.bind(('127.0.0.1',0)); listener.listen(); listener.settimeout(10)
             process=subprocess.Popen([BINARY,str(listener.getsockname()[1])])
             try:
-                peer,_=listener.accept()
-                with peer:
+                raw_peer,_=listener.accept()
+                with ResponseStream(raw_peer) as peer:
                     peer.settimeout(10)
                     negotiate(peer,1,target.getsockname()[1])
                     remote,_=target.accept()
