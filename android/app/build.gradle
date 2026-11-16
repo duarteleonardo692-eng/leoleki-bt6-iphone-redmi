@@ -11,8 +11,8 @@ android {
         applicationId 'app.leoleki.bt6.redmi.v08'
         minSdk 29
         targetSdk 34
-        versionCode 90
-        versionName '0.8.10-radio-prioritario'
+        versionCode 91
+        versionName '0.8.11-reconexao-canal'
     }
 
     compileOptions {

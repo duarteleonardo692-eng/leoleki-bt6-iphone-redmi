@@ -18,7 +18,8 @@ import hev.htproxy.TProxyService;
 public final class InternetService extends VpnService {
     public static final String START = "BT6_INTERNET_START", STOP = "BT6_INTERNET_STOP";
     public static volatile String status = "Internet Bluetooth desligada";
-    private final Set<BluetoothSocket> sockets = ConcurrentHashMap.newKeySet();
+    private final ConcurrentHashMap<BluetoothSocket, Integer> sockets = new ConcurrentHashMap<>();
+    private volatile EncryptedEndpoint endpoint;
     private final ScheduledExecutorService timers = Executors.newSingleThreadScheduledExecutor();
     private volatile StreamBridge bridge;
     private ParcelFileDescriptor tun;
@@ -59,7 +60,16 @@ public final class InternetService extends VpnService {
             try {
                 BluetoothAdapter adapter = getSystemService(BluetoothManager.class).getAdapter();
                 BluetoothDevice device = adapter.getRemoteDevice(address);
-                localBridge = new StreamBridge(() -> openLink(device, psm), message -> android.util.Log.w("BT6Internet", message));
+                EncryptedEndpoint currentEndpoint = new EncryptedEndpoint(getApplicationContext(), device, psm, timers, fresh -> {
+                    sockets.forEach((socket, used) -> {
+                        if (used != fresh) try { socket.close(); } catch (IOException ignored) { }
+                    });
+                });
+                synchronized (this) {
+                    if (stopping || generation != attempt) { currentEndpoint.close(); return; }
+                    endpoint = currentEndpoint; currentEndpoint.start();
+                }
+                localBridge = new StreamBridge(() -> openLink(device, currentEndpoint.awaitPsm()), message -> android.util.Log.w("BT6Internet", message));
                 synchronized (this) {
                     if (stopping || generation != attempt) { localBridge.close(); return; }
                     bridge = localBridge;
@@ -112,7 +122,7 @@ public final class InternetService extends VpnService {
         // encrypted link rather than initiating another authentication round.
         BluetoothSocket socket = device.createInsecureL2capChannel(psm);
         android.util.Log.i("BT6Internet", "Abrindo PSM apos bootstrap GATT criptografado=" + psm);
-        sockets.add(socket);
+        sockets.put(socket, psm);
         ScheduledFuture<?> deadline;
         try {
             deadline = timers.schedule(() -> {
@@ -164,7 +174,8 @@ public final class InternetService extends VpnService {
     }
     private synchronized void shutdown() {
         stopping = true; starting = false; generation++;
-        for (BluetoothSocket s : sockets) try { s.close(); } catch(IOException ignored) { }
+        if (endpoint != null) { endpoint.close(); endpoint = null; }
+        for (BluetoothSocket s : sockets.keySet()) try { s.close(); } catch(IOException ignored) { }
         sockets.clear();
         if (bridge != null) { bridge.close(); bridge = null; }
         try { TProxyService.TProxyStopService(); } catch (LinkageError ignored) { }
