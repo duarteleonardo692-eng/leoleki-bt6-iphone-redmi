@@ -11,8 +11,8 @@ android {
         applicationId 'app.leoleki.bt6.redmi.v08'
         minSdk 29
         targetSdk 34
-        versionCode 88
-        versionName '0.8.8-diagnostico-chrome'
+        versionCode 89
+        versionName '0.8.9-fila-canais'
     }
 
     compileOptions {

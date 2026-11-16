@@ -18,8 +18,9 @@ public final class StreamBridge implements AutoCloseable {
     private final java.util.function.Consumer<String> diagnostics;
     private final Semaphore connecting = new Semaphore(1, true);
     private final Set<Session> sessions = ConcurrentHashMap.newKeySet();
-    private final ExecutorService workers = Executors.newFixedThreadPool(24);
-    private final Semaphore slots = new Semaphore(12);
+    private final ExecutorService workers = Executors.newFixedThreadPool(64);
+    private final Semaphore slots = new Semaphore(32);
+    private final Semaphore channels = new Semaphore(12, true);
     private final ServerSocket server;
     private volatile boolean closed;
     public final AtomicLong sent = new AtomicLong(), received = new AtomicLong();
@@ -39,7 +40,7 @@ public final class StreamBridge implements AutoCloseable {
         while (!closed) {
             try {
                 Socket client = server.accept();
-                if (!slots.tryAcquire()) { client.close(); continue; }
+                if (!slots.tryAcquire()) { diagnostics.accept("Fila do relay cheia"); client.close(); continue; }
                 Session session = new Session(client);
                 sessions.add(session);
                 if (closed) { session.close(); break; }
@@ -51,18 +52,36 @@ public final class StreamBridge implements AutoCloseable {
     private final class Session implements AutoCloseable {
         final Socket client;
         volatile Link link;
-        boolean ended;
+        volatile boolean ended;
+        boolean channelHeld;
+        volatile long lastActivity = System.nanoTime();
         Session(Socket client) { this.client = client; }
         void start() {
             try {
                 client.setTcpNoDelay(true);
+                client.setSoTimeout(30000);
+                InputStream originalInput = client.getInputStream();
+                int first = originalInput.read();
+                if (first < 0) { close(); return; }
+                InputStream clientInput = new SequenceInputStream(new ByteArrayInputStream(new byte[]{(byte)first}), originalInput);
+                client.setSoTimeout(0);
+                long waitStart = System.nanoTime();
+                while (!channels.tryAcquire(1, TimeUnit.SECONDS)) {
+                    if (closed || ended) throw new IOException("Relay closed while queued");
+                    if (System.nanoTime() - waitStart > TimeUnit.SECONDS.toNanos(30)) throw new IOException("Fila Bluetooth expirou");
+                    evictIdleChannel();
+                }
+                synchronized (this) {
+                    if (ended) { channels.release(); return; }
+                    channelHeld = true;
+                }
                 // Factory must itself bound/cancel connecting Bluetooth sockets.
                 Link opened;
                 // Pairing/authentication is shared by the BLE link. Never launch
                 // concurrent secure handshakes when the VPN opens several flows.
                 connecting.acquire();
                 try {
-                    if (closed) throw new IOException("Relay closed");
+                    if (closed || ended) throw new IOException("Relay closed");
                     opened = factory.open();
                 } finally { connecting.release(); }
                 synchronized (this) {
@@ -70,7 +89,7 @@ public final class StreamBridge implements AutoCloseable {
                     link = opened;
                 }
                 workers.execute(() -> pump(linkInput(), clientOutput(), received, "Bluetooth para Android"));
-                pump(client.getInputStream(), opened.output(), sent, "Android para Bluetooth");
+                pump(clientInput, opened.output(), sent, "Android para Bluetooth");
             } catch (Exception e) { diagnostics.accept("Sessao: " + e.getClass().getSimpleName() + " " + e.getMessage()); close(); }
         }
         InputStream linkInput() { try { return link.input(); } catch (IOException e) { close(); return new ByteArrayInputStream(new byte[0]); } }
@@ -82,7 +101,7 @@ public final class StreamBridge implements AutoCloseable {
                 while (!closed && (n = in.read(buffer)) >= 0) {
                     if (n == 0) continue;
                     out.write(buffer, 0, n);
-                    counter.addAndGet(n);
+                    counter.addAndGet(n); lastActivity = System.nanoTime();
                 }
             } catch (IOException error) { diagnostics.accept(direction + ": " + error.getClass().getSimpleName() + " " + error.getMessage()); }
             finally { close(); }
@@ -93,7 +112,17 @@ public final class StreamBridge implements AutoCloseable {
             try { client.close(); } catch (IOException ignored) { }
             if (link != null) try { link.close(); } catch (IOException ignored) { }
             sessions.remove(this); slots.release();
+            if (channelHeld) { channelHeld = false; channels.release(); }
         }
+    }
+    private void evictIdleChannel() {
+        long cutoff = System.nanoTime() - TimeUnit.SECONDS.toNanos(15);
+        Session oldest = null;
+        for (Session session : sessions) {
+            if (!session.ended && session.link != null && session.lastActivity < cutoff &&
+                (oldest == null || session.lastActivity < oldest.lastActivity)) oldest = session;
+        }
+        if (oldest != null) { diagnostics.accept("Liberando canal ocioso para a fila"); oldest.close(); }
     }
     @Override public synchronized void close() {
         if (closed) return;
