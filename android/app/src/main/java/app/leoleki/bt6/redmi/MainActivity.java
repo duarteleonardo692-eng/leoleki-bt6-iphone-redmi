@@ -64,6 +64,7 @@ public class MainActivity extends Activity {
     private final ByteArrayOutputStream responseBuffer = new ByteArrayOutputStream();
     private final ArrayDeque<byte[]> txQueue = new ArrayDeque<>();
     private TextView statusView, logView, pageView, browserStatus;
+    private Button internetButton;
     private WebView browserView;
     private EditText browserInput;
     private String browserCurrentURL = "https://example.com/";
@@ -84,7 +85,7 @@ public class MainActivity extends Activity {
         scroll.addView(content);
 
         TextView title = new TextView(this);
-        title.setText("BT6 v0.8.4 — Internet do iPhone");
+        title.setText("BT6 v0.8.6 — Internet do iPhone");
         title.setTextSize(24f);
         content.addView(title);
         addText(content, "Conecte o iPhone ao Wi-Fi e mantenha o BT6 v0.8 aberto nele. Depois busque o iPhone e ative a internet. Primeira validacao nos aparelhos ainda pendente.");
@@ -92,7 +93,8 @@ public class MainActivity extends Activity {
         statusView.setTextSize(18f);
         addButton(content, "1. Buscar iPhone BT6 v0.8", this::ensurePermissionsAndScan);
         addText(content, "INTERNET PARA OUTROS APPS — experimental: use iPhone v0.8 no Wi-Fi, com o BT6 aberto. A VPN substitui outra VPN em uso. Velocidade e estabilidade ainda dependem do teste fisico.");
-        addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
+        internetButton = addButton(content, "ATIVAR INTERNET DO IPHONE", this::prepareInternet);
+        internetButton.setEnabled(false);
         addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.snapshot()));
         addButton(content, "DESLIGAR INTERNET", () -> startService(new Intent(this, InternetService.class).setAction(InternetService.STOP)));
         LinearLayout diagnostics = new LinearLayout(this);
@@ -184,11 +186,12 @@ public class MainActivity extends Activity {
         return view;
     }
 
-    private void addButton(LinearLayout container, String label, Runnable action) {
+    private Button addButton(LinearLayout container, String label, Runnable action) {
         Button view = new Button(this);
         view.setText(label);
         view.setOnClickListener(v -> action.run());
         container.addView(view);
+        return view;
     }
 
     private void status(String text) {
@@ -430,6 +433,7 @@ public class MainActivity extends Activity {
         }
         notificationReady = false;
         internetPsm = 0;
+        internetButton.setEnabled(false);
         writeActive = false;
         txQueue.clear();
         requestChar = null;
@@ -535,9 +539,9 @@ public class MainActivity extends Activity {
         @Override public void onDescriptorWrite(BluetoothGatt connection, BluetoothGattDescriptor descriptor, int code) {
             if (connection != gatt) return;
             if (CCCD.equals(descriptor.getUuid()) && code == BluetoothGatt.GATT_SUCCESS) {
-                setupActive = false;
+                setupActive = true;
                 notificationReady = true;
-                status("Conectado ao iPhone v0.8. Pronto para transferir.");
+                status("Bluetooth conectado. Aguarde a autorizacao do pareamento nos dois aparelhos.");
                 readInternetEndpoint(connection);
             } else {
                 setupActive = false;
@@ -610,10 +614,17 @@ public class MainActivity extends Activity {
     }
     private void readPsm(BluetoothGattCharacteristic ch, byte[] value, int result) {
         if (!PSM.equals(ch.getUuid())) return;
-        if (result == BluetoothGatt.GATT_SUCCESS && value != null && value.length == 3 && value[0] == 8) {
+        setupActive = false;
+        android.util.Log.i("BT6Internet", "Endpoint GATT lido; status=" + result + " bytes=" + (value == null ? 0 : value.length));
+        if (result == BluetoothGatt.GATT_SUCCESS && value != null && value.length == 3 && value[0] == 9) {
             internetPsm = (value[1] & 255) | ((value[2] & 255) << 8);
-            status("iPhone v0.8 pronto para internet L2CAP. Toque em ATIVAR INTERNET.");
-        } else status("Canal de internet nao pronto. Reinicie o anuncio no iPhone e busque novamente.");
+            runOnUiThread(() -> internetButton.setEnabled(true));
+            status("iPhone pronto; vinculo criptografado confirmado. Toque em ATIVAR INTERNET.");
+        } else {
+            internetPsm = 0;
+            runOnUiThread(() -> internetButton.setEnabled(false));
+            status("Nao foi possivel autenticar o canal. Confirme o pareamento nos dois aparelhos e busque novamente.");
+        }
     }
     private void prepareInternet() {
         if (!isReady() || internetPsm == 0 || Build.VERSION.SDK_INT < 29) {

@@ -11,8 +11,8 @@ android {
         applicationId 'app.leoleki.bt6.redmi.v08'
         minSdk 29
         targetSdk 34
-        versionCode 84
-        versionName '0.8.4-diagnostico-canal'
+        versionCode 86
+        versionName '0.8.6-autenticacao-gatt'
     }
 
     compileOptions {

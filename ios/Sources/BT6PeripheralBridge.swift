@@ -36,7 +36,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
 
     override init() {
         super.init()
-        RelayDiagnostics.record("bridge launch build83 service=A81")
+        RelayDiagnostics.record("bridge launch build84 service=A81 encrypted GATT bootstrap")
         manager = CBPeripheralManager(delegate: self, queue: .main)
     }
 
@@ -73,7 +73,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
         let response = CBMutableCharacteristic(type: Self.responseUUID, properties: [.notify], value: nil, permissions: [])
         responseCharacteristic = response
         let service = CBMutableService(type: Self.serviceUUID, primary: true)
-        let endpoint = CBMutableCharacteristic(type: Self.psmUUID, properties: [.read], value: nil, permissions: [.readable])
+        let endpoint = CBMutableCharacteristic(type: Self.psmUUID, properties: [.read], value: nil, permissions: [.readEncryptionRequired])
         service.characteristics = [request, response, endpoint]
         manager.add(service)
         serverStatus = "Configurando servico"
@@ -507,7 +507,7 @@ final class BT6PeripheralBridge: NSObject, ObservableObject, CBPeripheralManager
         guard request.characteristic.uuid == Self.psmUUID, let port = psm else {
             peripheral.respond(to: request, withResult: .attributeNotFound); return
         }
-        let value = Data([0x08, UInt8(port & 255), UInt8(port >> 8)])
+        let value = Data([0x09, UInt8(port & 255), UInt8(port >> 8)])
         guard request.offset <= value.count else {
             peripheral.respond(to: request, withResult: .invalidOffset); return
         }

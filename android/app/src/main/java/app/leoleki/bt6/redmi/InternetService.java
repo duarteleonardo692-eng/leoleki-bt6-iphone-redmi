@@ -105,11 +105,11 @@ public final class InternetService extends VpnService {
     @SuppressLint("MissingPermission")
     private StreamBridge.Link openLink(BluetoothDevice device, int psm) throws IOException {
         if (stopping) throw new IOException("Desligado");
-        // The iPhone publishes this PSM with withEncryption:true and therefore
-        // enforces LE encryption. Avoid Android's additional authenticated-link
-        // requirement, which can trigger Classic/LE reauthentication and bond loss
-        // on these phones. There is no plaintext PSM fallback in the iOS app.
+        // The v9 endpoint can only be read after GATT link encryption. The
+        // iPhone still enforces withEncryption:true on this PSM. Reuse that
+        // encrypted link rather than initiating another authentication round.
         BluetoothSocket socket = device.createInsecureL2capChannel(psm);
+        android.util.Log.i("BT6Internet", "Abrindo PSM apos bootstrap GATT criptografado=" + psm);
         sockets.add(socket);
         ScheduledFuture<?> deadline;
         try {
