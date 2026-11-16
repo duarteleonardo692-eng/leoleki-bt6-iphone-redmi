@@ -102,7 +102,7 @@ public class MainActivity extends Activity {
         internetButton.setEnabled(false);
         addButton(content, "VER ESTADO DA INTERNET", () -> status(InternetService.snapshot()));
         addButton(content, "DESLIGAR INTERNET", () -> {
-            if (gatt != null) try { gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED); } catch (RuntimeException ignored) { }
+            if (gatt != null) try { gatt.requestConnectionPriority(BluetoothGatt.CONNECTION_PRIORITY_BALANCED); } catch (SecurityException ignored) { }
             startService(new Intent(this, InternetService.class).setAction(InternetService.STOP));
         });
         LinearLayout diagnostics = new LinearLayout(this);
@@ -636,6 +636,8 @@ public class MainActivity extends Activity {
                 android.util.Log.i("BT6Internet", "Prioridade de transferencia solicitada=" + requested);
                 if (Build.VERSION.SDK_INT >= 26) gatt.setPreferredPhy(BluetoothDevice.PHY_LE_2M_MASK,
                     BluetoothDevice.PHY_LE_2M_MASK, BluetoothDevice.PHY_OPTION_NO_PREFERRED);
+            } catch (SecurityException denied) {
+                android.util.Log.i("BT6Internet", "Sem permissao para ajuste opcional de radio");
             } catch (RuntimeException optional) {
                 android.util.Log.i("BT6Internet", "Ajuste opcional de radio indisponivel: " + optional.getClass().getSimpleName());
             }
